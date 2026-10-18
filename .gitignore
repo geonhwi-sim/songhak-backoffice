@@ -1,0 +1,24 @@
+# 비밀키와 실데이터는 절대 커밋하지 않는다
+.env
+.env.*
+!.env.example
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
+data/
+dumps/
+*.sql.gz
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
