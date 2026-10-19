@@ -21,6 +21,7 @@ from sqlalchemy import (
     UniqueConstraint,
     false,
     func,
+    text,
     true,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -37,13 +38,21 @@ class SourceMixin:
 
 
 class PeriodMixin:
+    """CHECK 제약은 모두 테이블 단위로 둔다.
+    컬럼에 붙인 CheckConstraint는 Alembic autogenerate가 마이그레이션에서 빠뜨린다."""
+
     valid_from: Mapped[date]
     valid_to: Mapped[date | None]  # null = 현재까지
+
+    __checks__: tuple[tuple[str, str], ...] = ()  # (조건, 이름)
 
     @declared_attr.directive
     def __table_args__(cls):
         # 테이블마다 새 제약 객체를 만들어야 한다 (하나를 여러 테이블에 붙일 수 없음)
-        return (CheckConstraint("valid_to IS NULL OR valid_to > valid_from", name="period"),)
+        return (
+            CheckConstraint("valid_to IS NULL OR valid_to > valid_from", name="period"),
+            *(CheckConstraint(sql, name=name) for sql, name in cls.__checks__),
+        )
 
 
 # ── 정산 ──
@@ -58,7 +67,7 @@ class Place(SourceMixin, Base):
 class MenuCategory(SourceMixin, Base):
     __tablename__ = "menu_categories"
     name: Mapped[str] = mapped_column(Text)
-    sort_order: Mapped[int] = mapped_column(default=0)
+    sort_order: Mapped[int] = mapped_column(default=0, server_default=text("0"))
 
 
 class Menu(SourceMixin, Base):
@@ -82,38 +91,38 @@ class MenuOption(SourceMixin, Base):
 
 class MenuPrice(PeriodMixin, Base):
     __tablename__ = "menu_prices"
+    __checks__ = (("price >= 0", "price_nonneg"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     menu_id: Mapped[int] = mapped_column(ForeignKey("menus.id"))
-    price: Mapped[int] = mapped_column(CheckConstraint("price >= 0", name="price_nonneg"))
+    price: Mapped[int]
 
     menu: Mapped[Menu] = relationship(back_populates="prices")
 
 
 class MenuOptionPrice(PeriodMixin, Base):
     __tablename__ = "menu_option_prices"
+    __checks__ = (("extra_price >= 0", "extra_nonneg"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     option_id: Mapped[int] = mapped_column(ForeignKey("menu_options.id"))
-    extra_price: Mapped[int] = mapped_column(CheckConstraint("extra_price >= 0", name="extra_nonneg"))
+    extra_price: Mapped[int]
 
 
 class PlaceMenuPricing(PeriodMixin, Base):
     """정산처마다 메뉴별로 기본가(normal) 또는 할인가(discount)를 적용한 기간."""
 
     __tablename__ = "place_menu_pricing"
+    __checks__ = (("price_type IN ('normal', 'discount')", "price_type"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     place_id: Mapped[int] = mapped_column(ForeignKey("places.id"))
     menu_id: Mapped[int] = mapped_column(ForeignKey("menus.id"))
-    price_type: Mapped[str] = mapped_column(
-        String(10), CheckConstraint("price_type IN ('normal', 'discount')", name="price_type")
-    )
+    price_type: Mapped[str] = mapped_column(String(10))
 
 
 class DiscountRate(PeriodMixin, Base):
     __tablename__ = "discount_rates"
+    __checks__ = (("rate_percent >= 0 AND rate_percent < 100", "rate_range"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    rate_percent: Mapped[Decimal] = mapped_column(
-        Numeric(5, 2), CheckConstraint("rate_percent >= 0 AND rate_percent < 100", name="rate_range")
-    )
+    rate_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2))
 
 
 class SalesOrder(SourceMixin, Base):
@@ -176,9 +185,10 @@ class Employee(SourceMixin, Base):
 
 class EmployeeWageRate(PeriodMixin, Base):
     __tablename__ = "employee_wage_rates"
+    __checks__ = (("hourly_rate > 0", "rate_positive"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"))
-    hourly_rate: Mapped[int] = mapped_column(CheckConstraint("hourly_rate > 0", name="rate_positive"))
+    hourly_rate: Mapped[int]
 
 
 class WorkLog(SourceMixin, Base):
@@ -191,7 +201,7 @@ class WorkLog(SourceMixin, Base):
     work_date: Mapped[date] = mapped_column(index=True)
     start_time: Mapped[time]
     end_time: Mapped[time]
-    break_min: Mapped[int] = mapped_column(default=0)
+    break_min: Mapped[int] = mapped_column(default=0, server_default=text("0"))
 
 
 # ── 발주 ──
@@ -200,7 +210,7 @@ class WorkLog(SourceMixin, Base):
 class SupplyCategory(SourceMixin, Base):
     __tablename__ = "supply_categories"
     name: Mapped[str] = mapped_column(Text)
-    sort_order: Mapped[int] = mapped_column(default=0)
+    sort_order: Mapped[int] = mapped_column(default=0, server_default=text("0"))
 
 
 class SupplyItem(SourceMixin, Base):
@@ -217,7 +227,7 @@ class SupplyItem(SourceMixin, Base):
 class Requester(SourceMixin, Base):
     __tablename__ = "requesters"
     name: Mapped[str] = mapped_column(Text)
-    sort_order: Mapped[int] = mapped_column(default=0)
+    sort_order: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(default=True, server_default=true())
 
 
@@ -256,9 +266,10 @@ class PaymentCard(Base):
     """세금 계산용 카드 구분. 카드 전체 번호는 저장하지 않는다."""
 
     __tablename__ = "payment_cards"
+    __table_args__ = (CheckConstraint("last4 ~ '^[0-9]{4}$'", name="last4_digits"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     nickname: Mapped[str] = mapped_column(Text)
-    last4: Mapped[str] = mapped_column(String(4), CheckConstraint("last4 ~ '^[0-9]{4}$'", name="last4_digits"))
+    last4: Mapped[str] = mapped_column(String(4))
     is_active: Mapped[bool] = mapped_column(default=True, server_default=true())
 
 
@@ -266,9 +277,10 @@ class SupplyPayment(Base):
     """관리자가 발주를 완료할 때 입력하는 실제 결제 정보. 모두 선택 입력."""
 
     __tablename__ = "supply_payments"
+    __table_args__ = (CheckConstraint("paid_amount IS NULL OR paid_amount >= 0", name="paid_nonneg"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     supply_order_id: Mapped[int] = mapped_column(ForeignKey("supply_orders.id"), unique=True)
-    paid_amount: Mapped[int | None] = mapped_column(CheckConstraint("paid_amount >= 0", name="paid_nonneg"))
+    paid_amount: Mapped[int | None]
     paid_on: Mapped[date | None]
     card_id: Mapped[int | None] = mapped_column(ForeignKey("payment_cards.id"))
     memo: Mapped[str | None] = mapped_column(Text)
