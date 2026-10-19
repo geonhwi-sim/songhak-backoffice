@@ -18,6 +18,22 @@
 
 ## 관계도
 
+영역별 상세 그림 (컬럼 포함). 원본은 같은 폴더의 `.mmd` 파일이고, 고친 뒤 `npx @mermaid-js/mermaid-cli -i erd/sales.mmd -o erd/sales.png -b white -s 2 -t neutral`로 다시 그린다.
+
+### 정산
+
+![정산 ERD](erd/sales.png)
+
+### 발주
+
+![발주 ERD](erd/supply.png)
+
+### 인건비 · 운영
+
+![인건비·운영 ERD](erd/staff-ops.png)
+
+### 전체 관계 (요약)
+
 ```mermaid
 erDiagram
     places ||--o{ sales_orders : "주문"

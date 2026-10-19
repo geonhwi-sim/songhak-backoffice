@@ -1,0 +1,67 @@
+---
+title: 발주 (품목 · 발주 · 결제)
+---
+erDiagram
+    supply_categories {
+        int id PK
+        text source_id UK
+        text name
+        int sort_order
+    }
+    supply_items {
+        int id PK
+        text source_id UK
+        int category_id FK
+        text name
+        int ref_price "참고 단가, 관리자만"
+        text note "직원에게도 보임"
+        bool is_active
+    }
+    requesters {
+        int id PK
+        text source_id UK
+        text name
+        int sort_order
+        bool is_active
+    }
+    supply_orders {
+        int id PK
+        text source_id UK "Firestore orders id"
+        int requester_id FK
+        text requester_name "당시 이름"
+        text status "pending, ordered, done"
+        text memo
+        int estimated_total "단가표 기준 예상"
+        timestamptz created_at
+        timestamptz source_deleted_at "7일 자동 삭제 후에도 보존"
+    }
+    supply_order_items {
+        int id PK
+        int supply_order_id FK
+        int supply_item_id FK "이름이 같은 품목이 있을 때만"
+        text item_name "당시 이름"
+        int unit_price
+        numeric quantity
+        int subtotal
+    }
+    payment_cards {
+        int id PK
+        text nickname
+        char last4 "끝 4자리만, 전체 번호 저장 안 함"
+        bool is_active
+    }
+    supply_payments {
+        int id PK
+        int supply_order_id FK "발주당 하나"
+        int paid_amount "실제 결제 금액"
+        date paid_on
+        int card_id FK
+        text memo
+    }
+
+    supply_categories ||--o{ supply_items : "분류"
+    requesters |o--o{ supply_orders : "요청"
+    supply_orders ||--|{ supply_order_items : "항목"
+    supply_items |o--o{ supply_order_items : ""
+    supply_orders ||--o| supply_payments : "실제 결제"
+    payment_cards |o--o{ supply_payments : "카드"

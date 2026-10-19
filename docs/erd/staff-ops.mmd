@@ -1,0 +1,50 @@
+---
+title: 인건비 · 운영
+---
+erDiagram
+    employees {
+        int id PK
+        text source_id UK
+        text name
+        bool is_active
+    }
+    employee_wage_rates {
+        int id PK
+        int employee_id FK
+        int hourly_rate
+        date valid_from
+        date valid_to "null이면 현재"
+    }
+    work_logs {
+        int id PK
+        text source_id UK
+        int employee_id FK
+        date work_date
+        time start_time
+        time end_time "start_time보다 늦어야 함"
+        int break_min
+    }
+    app_users {
+        int id PK
+        text email UK
+        text role "owner 또는 staff"
+        int employee_id FK "직원 계정이면 본인"
+        timestamptz created_at
+    }
+    day_memos {
+        date memo_date PK
+        text body
+    }
+    sync_runs {
+        int id PK
+        text source "rtdb 또는 firestore"
+        timestamptz started_at
+        timestamptz finished_at
+        text status
+        jsonb stats
+        text error
+    }
+
+    employees ||--o{ employee_wage_rates : "시급 이력"
+    employees ||--o{ work_logs : "근무"
+    employees |o--o| app_users : "직원 계정"

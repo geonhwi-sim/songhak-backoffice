@@ -1,0 +1,93 @@
+---
+title: 정산 (정산처 · 메뉴 · 가격 이력 · 주문)
+---
+erDiagram
+    places {
+        int id PK
+        text source_id UK "RTDB places[].id"
+        text name
+        bool is_active "삭제 대신 비활성"
+    }
+    menu_categories {
+        int id PK
+        text source_id UK
+        text name
+        int sort_order
+    }
+    menus {
+        int id PK
+        text source_id UK
+        int category_id FK
+        text name
+        bool is_active
+    }
+    menu_options {
+        int id PK
+        text source_id UK
+        int menu_id FK
+        text name "곱빼기 등"
+        bool is_active
+    }
+    menu_prices {
+        int id PK
+        int menu_id FK
+        int price
+        date valid_from
+        date valid_to "null이면 현재"
+    }
+    menu_option_prices {
+        int id PK
+        int option_id FK
+        int extra_price
+        date valid_from
+        date valid_to
+    }
+    place_menu_pricing {
+        int id PK
+        int place_id FK
+        int menu_id FK
+        text price_type "normal 또는 discount"
+        date valid_from
+        date valid_to
+    }
+    discount_rates {
+        int id PK
+        numeric rate_percent
+        date valid_from
+        date valid_to
+    }
+    sales_orders {
+        int id PK
+        text source_id UK "RTDB orders[].id"
+        int place_id FK
+        date order_date
+        timestamptz source_deleted_at
+    }
+    sales_order_items {
+        int id PK
+        int order_id FK
+        int line_no
+        text kind "menu, option, legacy_option, custom"
+        int menu_id FK "custom이면 null"
+        int option_id FK
+        text item_name "당시 이름"
+        text option_name
+        int qty
+        int unit_price_normal "할인 전 단가"
+        int unit_price "당시 청구 단가"
+        bool is_discounted
+        int amount "qty x unit_price 자동 계산"
+        text price_source "snapshot, history, estimated"
+        bool needs_review
+    }
+
+    menu_categories ||--o{ menus : "분류"
+    menus ||--o{ menu_options : "옵션"
+    menus ||--o{ menu_prices : "가격 이력"
+    menu_options ||--o{ menu_option_prices : "추가금 이력"
+    places ||--o{ place_menu_pricing : "메뉴별 할인 적용"
+    menus ||--o{ place_menu_pricing : ""
+    places ||--o{ sales_orders : "주문"
+    sales_orders ||--|{ sales_order_items : "항목"
+    menus |o--o{ sales_order_items : ""
+    menu_options |o--o{ sales_order_items : ""
