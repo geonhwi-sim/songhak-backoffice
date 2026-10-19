@@ -86,6 +86,17 @@ def test_amount_is_computed_from_qty_and_unit_price(conn):
     assert conn.execute(text("select amount from sales_order_items where order_id = 9001")).scalar() == 30000
 
 
+@pytest.mark.parametrize("status, ok", [("pending", True), ("ordered", True), ("done", True), ("arrived", False)])
+def test_supply_order_status_values(conn, status, ok):
+    sql = ("insert into supply_orders(requester_name, status, created_at) "
+           f"values ('직원 A', '{status}', now())")
+    if ok:
+        run(conn, sql)
+    else:
+        with pytest.raises(IntegrityError, match="ck_supply_orders_status"):
+            run(conn, sql)
+
+
 def test_work_log_end_must_be_after_start(conn):
     run(conn, "insert into employees(id, name) values (9001, '테스트')")
     with pytest.raises(IntegrityError, match="time_order"):

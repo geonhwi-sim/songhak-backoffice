@@ -233,7 +233,7 @@ class Requester(SourceMixin, Base):
 
 class SupplyOrder(SourceMixin, Base):
     __tablename__ = "supply_orders"
-    __table_args__ = (CheckConstraint("status IN ('pending', 'done')", name="status"),)
+    __table_args__ = (CheckConstraint("status IN ('pending', 'ordered', 'done')", name="status"),)
     requester_id: Mapped[int | None] = mapped_column(ForeignKey("requesters.id"))
     requester_name: Mapped[str] = mapped_column(Text)  # 당시 이름
     status: Mapped[str] = mapped_column(String(10))
