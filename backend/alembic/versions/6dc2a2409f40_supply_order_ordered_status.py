@@ -23,12 +23,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_constraint("ck_supply_orders_status", "supply_orders", type_="check")
+    op.drop_constraint(op.f("ck_supply_orders_status"), "supply_orders", type_="check")
     op.create_check_constraint("status", "supply_orders", "status IN ('pending', 'ordered', 'done')")
 
 
 def downgrade() -> None:
     # 되돌리면 주문함 상태는 대기로 바꾼다 (입고되지 않은 발주라서)
     op.execute("UPDATE supply_orders SET status = 'pending' WHERE status = 'ordered'")
-    op.drop_constraint("ck_supply_orders_status", "supply_orders", type_="check")
+    op.drop_constraint(op.f("ck_supply_orders_status"), "supply_orders", type_="check")
     op.create_check_constraint("status", "supply_orders", "status IN ('pending', 'done')")
