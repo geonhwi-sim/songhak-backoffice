@@ -18,14 +18,13 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
-from time import perf_counter
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app import models as m
-from app.db import SessionLocal
+from app.etl.common import run_recorded, upsert
 
 REPO = Path(__file__).resolve().parents[3]
 DEFAULT_HISTORY = REPO / "data" / "price_history.json"
@@ -233,20 +232,6 @@ def convert_items(order: dict, cat: Catalog, merge: bool = True) -> list[Line]:
 # ── DB 쓰기 ──
 
 
-def upsert(session: Session, model, rows: list[dict], key: str = "source_id") -> dict[str, int]:
-    """key 기준으로 넣거나 고치고, {key 값: id}를 돌려준다. id가 없는 테이블은 빈 dict."""
-    if not rows:
-        return {}
-    stmt = insert(model).values(rows)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=[key], set_={c: stmt.excluded[c] for c in rows[0] if c != key}
-    )
-    if not hasattr(model, "id"):
-        session.execute(stmt)
-        return {}
-    return dict(session.execute(stmt.returning(getattr(model, key), model.id)).all())
-
-
 def period_rows(periods: list[Period], column: str, **fixed) -> list[dict]:
     """이력 구간을 DB 행으로. column은 값이 들어갈 컬럼 이름."""
     return [{**fixed, column: p.value, "valid_from": p.valid_from, "valid_to": p.valid_to} for p in periods]
@@ -343,38 +328,14 @@ def import_snapshot(session: Session, data: dict, history: dict) -> dict:
     }
 
 
-def finish_run(run_id: int, status: str, stats: dict | None, error: str | None) -> None:
-    with SessionLocal.begin() as s:
-        s.execute(update(m.SyncRun).where(m.SyncRun.id == run_id).values(
-            status=status, stats=stats, error=error, finished_at=func.now()))
-
-
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="정산 앱(RTDB) 스냅샷을 Postgres로 가져온다")
     ap.add_argument("snapshot", type=Path, help="RTDB에서 내보낸 JSON 파일")
     ap.add_argument("--history", type=Path, default=DEFAULT_HISTORY, help="과거 가격 이력 JSON")
     args = ap.parse_args(argv)
-    if SessionLocal is None:
-        raise SystemExit("DATABASE_URL이 없습니다. .env를 확인하세요.")
-
     data = json.loads(args.snapshot.read_text(encoding="utf-8"))
     history = json.loads(args.history.read_text(encoding="utf-8")) if args.history.exists() else {}
-
-    with SessionLocal.begin() as s:
-        run = m.SyncRun(source="rtdb")
-        s.add(run)
-        s.flush()
-        run_id = run.id
-    started = perf_counter()
-    try:
-        with SessionLocal.begin() as s:
-            stats = import_snapshot(s, data, history)
-    except Exception as e:
-        finish_run(run_id, "failed", None, repr(e))
-        raise
-    stats["seconds"] = round(perf_counter() - started, 2)
-    finish_run(run_id, "succeeded", stats, None)
-    print(json.dumps(stats, ensure_ascii=False, indent=2))
+    run_recorded("rtdb", lambda s: import_snapshot(s, data, history))
 
 
 if __name__ == "__main__":

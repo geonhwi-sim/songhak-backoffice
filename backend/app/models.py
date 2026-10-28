@@ -268,6 +268,7 @@ class PaymentCard(Base):
     __tablename__ = "payment_cards"
     __table_args__ = (CheckConstraint("last4 ~ '^[0-9]{4}$'", name="last4_digits"),)
     id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[str | None] = mapped_column(String(64), unique=True)
     nickname: Mapped[str] = mapped_column(Text)
     last4: Mapped[str] = mapped_column(String(4))
     is_active: Mapped[bool] = mapped_column(default=True, server_default=true())
@@ -283,6 +284,7 @@ class SupplyPayment(Base):
     paid_amount: Mapped[int | None]
     paid_on: Mapped[date | None]
     card_id: Mapped[int | None] = mapped_column(ForeignKey("payment_cards.id"))
+    card_label: Mapped[str | None] = mapped_column(Text)  # 당시 카드 이름. 원본에서 카드를 지워도 남는다
     memo: Mapped[str | None] = mapped_column(Text)
 
     order: Mapped[SupplyOrder] = relationship(back_populates="payment")
