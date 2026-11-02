@@ -1,0 +1,155 @@
+# 자연어 질의(PRD A1) 평가 세트
+#
+# - 질문은 사장님이 실제로 물어볼 말투로 쓴다. 날짜는 재현할 수 있게 연·월을 적는다.
+# - 정답 = gold_sql을 읽기 전용 계정으로 실행한 결과. 값은 저장소에 두지 않는다 (실데이터).
+# - 채점: 행 수가 같고, 각 행에 정답 값이 모두 들어 있으면 정답 (열 이름·추가 열은 보지 않음).
+#   ordered: true면 행 순서도 본다.
+# - 정산처·직원 이름은 질문에 넣지 않는다 (공개 저장소).
+# - "no_data" 문항은 데이터가 없을 때 추측하지 않고 없다고 답하는지 본다.
+
+- id: s01
+  area: 정산
+  question: 2026년 9월 정산 금액 합계가 얼마야?
+  gold_sql: |
+    SELECT sum(amount) FROM sales_items
+    WHERE order_date BETWEEN '2026-09-01' AND '2026-09-30'
+
+- id: s02
+  area: 정산
+  question: 9월에 정산 금액이 제일 큰 정산처는 어디고 얼마야?
+  gold_sql: |
+    SELECT place_name, sum(amount) AS amount FROM sales_items
+    WHERE order_date BETWEEN '2026-09-01' AND '2026-09-30'
+    GROUP BY place_name ORDER BY amount DESC LIMIT 1
+
+- id: s03
+  area: 정산
+  question: 8월 정산처별 주문 건수 알려줘
+  gold_sql: |
+    SELECT place_name, count(DISTINCT order_id) FROM sales_items
+    WHERE order_date BETWEEN '2026-08-01' AND '2026-08-31'
+    GROUP BY place_name
+
+- id: s04
+  area: 정산
+  question: 7월부터 10월까지 월별 정산 합계를 순서대로 보여줘
+  ordered: true
+  gold_sql: |
+    SELECT to_char(order_date, 'YYYY-MM') AS month, sum(amount) FROM sales_items
+    WHERE order_date BETWEEN '2026-07-01' AND '2026-10-31'
+    GROUP BY month ORDER BY month
+
+- id: s05
+  area: 정산
+  # 2~4위가 같은 수량이라 "3개"로 물으면 정답이 하나로 정해지지 않는다
+  question: 9월에 가장 많이 나간 메뉴는 뭐고 몇 그릇이야?
+  gold_sql: |
+    SELECT item_name, sum(qty) AS qty FROM sales_items
+    WHERE order_date BETWEEN '2026-09-01' AND '2026-09-30' AND kind = 'menu'
+    GROUP BY item_name ORDER BY qty DESC LIMIT 1
+
+- id: s06
+  area: 정산
+  question: 8월에 할인으로 깎아 준 금액이 모두 얼마야?
+  gold_sql: |
+    SELECT sum(discount_amount) FROM sales_items
+    WHERE order_date BETWEEN '2026-08-01' AND '2026-08-31'
+
+- id: s07
+  area: 정산
+  question: 확인이 필요하다고 표시된 항목이 들어 있는 주문은 몇 건이야?
+  gold_sql: |
+    SELECT count(DISTINCT order_id) FROM sales_items WHERE needs_review
+
+- id: s08
+  area: 정산
+  question: 9월에 주문이 있었던 날은 며칠이야?
+  gold_sql: |
+    SELECT count(DISTINCT order_date) FROM sales_items
+    WHERE order_date BETWEEN '2026-09-01' AND '2026-09-30'
+
+- id: p01
+  area: 인건비
+  question: 10월 급여 총액이 얼마야?
+  gold_sql: |
+    SELECT sum(total) FROM payroll WHERE month = '2026-10'
+
+- id: p02
+  area: 인건비
+  question: 10월 급여에서 주휴수당은 모두 얼마였어?
+  gold_sql: |
+    SELECT sum(juhu_pay) FROM payroll WHERE month = '2026-10'
+
+- id: p03
+  area: 인건비
+  question: 7월부터 10월까지 급여 기간별 총 근무시간 보여줘
+  ordered: true
+  gold_sql: |
+    SELECT month, sum(hours) FROM payroll
+    WHERE month BETWEEN '2026-07' AND '2026-10'
+    GROUP BY month ORDER BY month
+
+- id: p04
+  area: 인건비
+  question: 9월 급여 기간에 가장 오래 일한 직원은 누구고 몇 시간이야?
+  gold_sql: |
+    SELECT employee_name, hours FROM payroll
+    WHERE month = '2026-09' ORDER BY hours DESC LIMIT 1
+
+- id: p05
+  area: 인건비
+  question: 2026년 10월 1일부터 31일까지 근무한 날이 며칠이야?
+  gold_sql: |
+    SELECT count(DISTINCT work_date) FROM work_logs
+    WHERE work_date BETWEEN '2026-10-01' AND '2026-10-31'
+
+- id: p06
+  area: 인건비
+  question: 지금까지 주말(토·일)에 근무한 날은 모두 며칠이야?
+  gold_sql: |
+    SELECT count(DISTINCT work_date) FROM work_logs
+    WHERE extract(isodow FROM work_date) IN (6, 7)
+
+- id: o01
+  area: 발주
+  question: 10월에 들어온 발주는 몇 건이야?
+  gold_sql: |
+    SELECT count(*) FROM supply_orders
+    WHERE order_date BETWEEN '2026-10-01' AND '2026-10-31'
+
+- id: o02
+  area: 발주
+  question: 발주를 제일 많이 넣은 사람은 누구고 몇 건이야?
+  gold_sql: |
+    SELECT requester_name, count(*) AS n FROM supply_orders
+    GROUP BY requester_name ORDER BY n DESC LIMIT 1
+
+- id: o03
+  area: 발주
+  # 횟수가 같은 품목이 많아 "상위 N개"는 정답이 흔들린다. 전체 목록으로 묻는다
+  question: 품목별로 지금까지 몇 번 발주했는지 보여줘
+  gold_sql: |
+    SELECT item_name, count(DISTINCT order_id) AS n FROM supply_order_items
+    GROUP BY item_name
+
+- id: o04
+  area: 발주
+  question: 10월 발주 비용은 모두 얼마야?
+  gold_sql: |
+    SELECT sum(cost) FROM supply_orders
+    WHERE order_date BETWEEN '2026-10-01' AND '2026-10-31'
+
+- id: x01
+  area: 복합
+  question: 9월 정산 합계에서 9월 급여 총액을 빼면 얼마야?
+  gold_sql: |
+    SELECT (SELECT sum(amount) FROM sales_items WHERE order_date BETWEEN '2026-09-01' AND '2026-09-30')
+         - (SELECT sum(total) FROM payroll WHERE month = '2026-09')
+
+- id: x02
+  area: 복합
+  kind: no_data
+  question: 2025년 12월 정산 금액은 얼마였어?
+  gold_sql: |
+    SELECT sum(amount) FROM sales_items
+    WHERE order_date BETWEEN '2025-12-01' AND '2025-12-31'

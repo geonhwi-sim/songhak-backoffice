@@ -204,6 +204,25 @@ class WorkLog(SourceMixin, Base):
     break_min: Mapped[int] = mapped_column(default=0, server_default=text("0"))
 
 
+class PayrollPeriod(Base):
+    """급여 기간별 계산 결과 (근무 기록을 가져올 때마다 app/payroll.py가 다시 만든다).
+    주휴수당 전환 규칙은 SQL로 옮기지 않고, 자연어 질의는 이 결과를 읽는다."""
+
+    __tablename__ = "payroll_periods"
+    __table_args__ = (UniqueConstraint("employee_id", "month"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"))
+    month: Mapped[str] = mapped_column(String(7))  # "2026-11" = 10/17 ~ 11/16
+    period_start: Mapped[date]
+    period_end: Mapped[date]
+    days: Mapped[int]
+    hours: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+    base_pay: Mapped[int]
+    juhu_weeks: Mapped[int]
+    juhu_pay: Mapped[int]
+    total: Mapped[int]
+
+
 # ── 발주 ──
 
 

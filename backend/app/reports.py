@@ -95,9 +95,11 @@ def payroll(session: Session, month: str) -> dict:
     employees = []
     for e in session.scalars(select(m.Employee).order_by(m.Employee.id)):
         logs, rates = load_employee(session, e.id)
-        if not any(start <= lg.work_date <= end for lg in logs):
+        if not logs:
             continue
         w = calc_period_wage(logs, rates, month)
+        if w.total == 0:  # 근무가 없어도 지난 주의 주휴수당만 있을 수 있다
+            continue
         employees.append({"employee_id": e.id, "name": e.name, "days": w.days, "hours": float(w.hours),
                           "base_pay": w.base_pay, "juhu_weeks": w.juhu_weeks, "juhu_pay": w.juhu_pay,
                           "total": w.total})

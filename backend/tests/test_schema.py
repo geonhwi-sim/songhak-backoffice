@@ -33,12 +33,12 @@ ORDER = "insert into sales_orders(id, place_id, order_date) values (9001, 9001, 
 ITEM_COLS = "order_id, line_no, kind, menu_id, item_name, qty, unit_price_normal, unit_price, is_discounted, price_source"
 
 
-def test_23_tables_exist(conn):
+def test_24_tables_exist(conn):
     n = conn.execute(text(
         "select count(*) from information_schema.tables "
         "where table_schema = 'public' and table_name <> 'alembic_version'"
     )).scalar()
-    assert n == 23
+    assert n == 24  # 23 + payroll_periods (2026-11-02)
 
 
 def test_price_periods_cannot_overlap(conn):

@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app import models as m
 from app.etl.common import run_recorded, upsert
+from app.payroll import refresh_periods
 
 REPO = Path(__file__).resolve().parents[3]
 DEFAULT_HISTORY = REPO / "data" / "price_history.json"
@@ -320,11 +321,13 @@ def import_snapshot(session: Session, data: dict, history: dict) -> dict:
     upsert(session, m.DayMemo, [{"memo_date": to_date(k), "body": v} for k, v in memos.items() if v], key="memo_date")
 
     session.flush()
+    periods = refresh_periods(session)  # 자연어 질의가 읽는 급여 기간별 결과
     return {
         "places": len(place_ids), "menus": len(menu_ids), "options": len(option_ids),
         "orders": len(order_ids), "orders_marked_deleted": gone,
         "source_items": sum(len(to_list(o.get("items"))) for o in orders), "items": len(item_rows),
         "items_needs_review": review, "employees": len(emp_ids), "work_logs": len(logs), "memos": len(memos),
+        "payroll_periods": periods,
     }
 
 

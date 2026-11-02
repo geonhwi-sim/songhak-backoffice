@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, time
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.orm import Session
 
 from app import models as m
@@ -116,6 +116,32 @@ def calc_period_wage(logs: list[Log], rates: list[Rate], month: str) -> PeriodWa
             juhu_pay += won(min(h / 40, Decimal(1)) * 8 * rate_at(rates, week_last_day[wk]))
 
     return PeriodWage(start, end, len({lg.work_date for lg in in_period}), hours, base_pay, juhu_weeks, juhu_pay)
+
+
+def pay_month_of(d: date) -> str:
+    """그 날짜가 속한 급여 기간 이름. 17일부터는 다음 달 급여다."""
+    y, mo = (d.year, d.month) if d.day < 17 else ((d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1))
+    return f"{y}-{mo:02d}"
+
+
+def refresh_periods(session: Session) -> int:
+    """모든 직원의 급여 기간별 결과를 payroll_periods에 다시 만든다. 만든 행 수를 돌려준다."""
+    session.execute(delete(m.PayrollPeriod))
+    rows = []
+    for emp_id in session.scalars(select(m.Employee.id)).all():
+        logs, rates = load_employee(session, emp_id)
+        # 주휴수당은 일요일이 속한 기간에 들어가므로, 근무가 없는 다음 기간에도 생길 수 있다
+        months = {pay_month_of(lg.work_date) for lg in logs} | {pay_month_of(week_sunday(lg.work_date)) for lg in logs}
+        for month in sorted(months):
+            w = calc_period_wage(logs, rates, month)
+            if w.total == 0:
+                continue
+            rows.append({"employee_id": emp_id, "month": month, "period_start": w.start, "period_end": w.end,
+                         "days": w.days, "hours": w.hours, "base_pay": w.base_pay, "juhu_weeks": w.juhu_weeks,
+                         "juhu_pay": w.juhu_pay, "total": w.total})
+    if rows:
+        session.execute(insert(m.PayrollPeriod), rows)
+    return len(rows)
 
 
 def load_employee(session: Session, employee_id: int) -> tuple[list[Log], list[Rate]]:
