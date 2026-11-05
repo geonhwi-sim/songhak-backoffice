@@ -160,6 +160,7 @@ def home(session: Session, day: date | None = None) -> dict:
         "today": day,
         "payroll": payroll(session, current_pay_month(day)),
         "settlements": settlements(session, f"{day.year}-{day.month:02d}"),
-        "supply_orders": supply_orders(session, include_deleted=False, limit=10),
+        # 발주 앱은 7일 지난 발주를 지운다. 지워진 것도 실제 발주이므로 함께 보여 준다
+        "supply_orders": supply_orders(session, limit=10),
         "last_sync": last,
     }

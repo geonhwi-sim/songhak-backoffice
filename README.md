@@ -32,5 +32,16 @@ python -m venv .venv
 질문 → SQL 작성 → 실행 → (실패하면 오류를 보고 고쳐서 2회까지 재시도) → 답변. `POST /api/ask` (사장님 계정). `.env`에 `ANTHROPIC_API_KEY`가 필요합니다.
 평가 세트는 [backend/eval/questions.yaml](backend/eval/questions.yaml) (20문항). 정답 SQL 확인은 `python -m app.qa.evaluate --gold`, 에이전트 채점은 `--run` (API 비용 발생, 결과는 `data/eval_runs/`). 2026-11-05 기준 20/20.
 
+### 화면 (Next.js)
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:3000  (FastAPI가 8000번에서 돌고 있어야 함)
+```
+
+화면은 `/api/*`를 Next.js가 FastAPI로 넘겨 주는 구조라(같은 출처), 로그인 쿠키가 화면 코드에 노출되지 않습니다. 다른 주소의 API를 쓰려면 `API_URL` 환경 변수를 바꿉니다.
+화면: 로그인, 홈(이번 급여 인건비·이번 달 정산·최근 발주·동기화 시각), 정산(정산처별 합계 → 정산서·인쇄), 인건비, 질문하기(답변 + 실행한 SQL + 결과 표).
+
 스키마를 바꿀 때: `app/models.py`를 고친 뒤 `alembic revision --autogenerate -m "설명"` → 생성된 파일 검토 → `alembic upgrade head` → `pytest` → `alembic check`로 모델과 DB가 일치하는지 확인한다.
 CHECK 제약은 컬럼이 아니라 테이블 단위(`__table_args__`, `__checks__`)로 둔다. 컬럼에 붙이면 autogenerate가 빠뜨린다.
