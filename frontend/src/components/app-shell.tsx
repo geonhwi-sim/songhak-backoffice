@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import useSWR from "swr";
-import { Flame, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 
+import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { api, fetcher, type Me } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -31,11 +32,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex flex-1 flex-col">
       <header className="sticky top-0 z-10 border-b bg-background/90 backdrop-blur print:hidden">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
-          <Link href="/" className="mr-3 flex items-center gap-2 font-bold">
-            <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Flame className="size-4" />
-            </span>
-            <span className="hidden sm:inline">송학구이</span>
+          <Link href="/" className="mr-3 flex items-center gap-2">
+            <BrandMark />
+            <span className="hidden font-display text-xl tracking-wide sm:inline">송학구이 백오피스</span>
           </Link>
           <nav className="flex gap-1 overflow-x-auto">
             {NAV.map((n) => {

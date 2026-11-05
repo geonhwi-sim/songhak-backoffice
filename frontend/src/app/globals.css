@@ -10,6 +10,7 @@
   --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
+  --font-display: var(--font-display);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,32 +49,32 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* 숯불구이집: 숯(검정) 위에 불씨(주황) 한 가지만 강조색으로 */
+/* 발주 앱 "숯불" 팔레트와 같게 (songhak-inventory/src/index.css): 숯 검정 + 불씨 주황 + 구운 베이지 */
 :root {
-  --background: oklch(0.985 0.003 80);
-  --foreground: oklch(0.18 0.01 50);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.01 50);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.01 50);
-  --primary: oklch(0.56 0.17 42);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --background: #f4eee6;
+  --foreground: #221b16;
+  --card: #fffdf9;
+  --card-foreground: #221b16;
+  --popover: #fffdf9;
+  --popover-foreground: #221b16;
+  --primary: #c2410c;
+  --primary-foreground: #ffffff;
+  --secondary: #fbe3d3;
+  --secondary-foreground: #9a3412;
+  --muted: #e9e0d4;
+  --muted-foreground: #6e6258;
+  --accent: #e9e0d4;
+  --accent-foreground: #221b16;
+  --destructive: #b42318;
+  --border: #e4dace;
+  --input: #d8cbbb;
+  --ring: #c2410c;
+  --chart-1: #c2410c;
+  --chart-2: #1a56a0;
+  --chart-3: #9a6200;
+  --chart-4: #2f7a4b;
+  --chart-5: #6e6258;
+  --radius: 0.875rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);

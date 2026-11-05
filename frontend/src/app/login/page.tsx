@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Flame } from "lucide-react";
 
+import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -36,10 +36,10 @@ export default function LoginPage() {
     <main className="flex flex-1 items-center justify-center px-4 py-16">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <div className="mb-2 flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Flame className="size-5" />
-          </div>
-          <CardTitle className="text-lg">송학구이 백오피스</CardTitle>
+          <CardTitle className="flex items-center gap-2.5">
+            <BrandMark className="size-9" />
+            <span className="font-display text-[22px] font-normal tracking-wide">송학구이 백오피스</span>
+          </CardTitle>
           <CardDescription>사장님 계정으로 로그인하세요.</CardDescription>
         </CardHeader>
         <CardContent>
