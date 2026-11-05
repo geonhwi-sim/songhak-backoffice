@@ -21,8 +21,12 @@ python -m venv .venv
 .venv/Scripts/pip install -r requirements-dev.txt   # macOS/Linux: .venv/bin/pip
 .venv/Scripts/alembic upgrade head                  # 테이블, 질의용 qa 뷰 생성
 .venv/Scripts/python -m app.qa.create_user          # 자연어 질의용 읽기 전용 계정
+.venv/Scripts/python -m app.users add 이메일 --role owner   # 로그인 계정 (비밀번호는 입력 창에)
 .venv/Scripts/python -m pytest
+.venv/Scripts/uvicorn app.api:app --reload          # http://127.0.0.1:8000/docs
 ```
+
+로그인하면 서명한 토큰을 HttpOnly 쿠키로 받습니다. `/api/health`와 로그인을 빼면 모든 API에 로그인이 필요하고, 조회 API는 사장님(owner) 계정만 쓸 수 있습니다. 같은 이메일로 5번 틀리면 10분 동안 막힙니다.
 
 자연어 질의는 `qa` 스키마의 뷰만 읽을 수 있는 계정으로 SQL을 실행합니다. 원본 테이블 조회·쓰기·임시 테이블·5초 넘는 쿼리는 DB가 막습니다.
 평가 세트는 [backend/eval/questions.yaml](backend/eval/questions.yaml) (20문항), 정답 SQL 확인은 `python -m app.qa.evaluate --gold`.

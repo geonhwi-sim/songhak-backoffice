@@ -337,4 +337,7 @@ class AppUser(Base):
     email: Mapped[str] = mapped_column(Text, unique=True)
     role: Mapped[str] = mapped_column(String(10))
     employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"))
+    password_hash: Mapped[str | None] = mapped_column(Text)  # null이면 로그인 불가. 형식은 app/auth.py
+    is_active: Mapped[bool] = mapped_column(default=True, server_default=true())
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    last_login_at: Mapped[datetime | None]

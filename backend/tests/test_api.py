@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app import models as m
 from app.api import app, get_session
+from app.auth import current_user
 from app.db import engine
 from app.reports import current_pay_month
 
@@ -68,6 +69,8 @@ def client():
         s = Session(bind=conn, join_transaction_mode="create_savepoint")
         ids = seed(s)
         app.dependency_overrides[get_session] = lambda: s
+        # 조회 규칙만 본다. 로그인·권한은 test_auth.py
+        app.dependency_overrides[current_user] = lambda: m.AppUser(id=0, email="owner@test", role="owner")
         try:
             yield TestClient(app), ids
         finally:
@@ -172,6 +175,7 @@ def test_real_september_settlement_through_api():
         try:
             import_snapshot(s, data, history)
             app.dependency_overrides[get_session] = lambda: s
+            app.dependency_overrides[current_user] = lambda: m.AppUser(id=0, email="owner@test", role="owner")
             body = TestClient(app).get("/api/settlements", params={"month": "2026-09"}).json()
         finally:
             app.dependency_overrides.clear()
