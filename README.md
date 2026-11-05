@@ -29,7 +29,8 @@ python -m venv .venv
 로그인하면 서명한 토큰을 HttpOnly 쿠키로 받습니다. `/api/health`와 로그인을 빼면 모든 API에 로그인이 필요하고, 조회 API는 사장님(owner) 계정만 쓸 수 있습니다. 같은 이메일로 5번 틀리면 10분 동안 막힙니다.
 
 자연어 질의는 `qa` 스키마의 뷰만 읽을 수 있는 계정으로 SQL을 실행합니다. 원본 테이블 조회·쓰기·임시 테이블·5초 넘는 쿼리는 DB가 막습니다.
-평가 세트는 [backend/eval/questions.yaml](backend/eval/questions.yaml) (20문항), 정답 SQL 확인은 `python -m app.qa.evaluate --gold`.
+질문 → SQL 작성 → 실행 → (실패하면 오류를 보고 고쳐서 2회까지 재시도) → 답변. `POST /api/ask` (사장님 계정). `.env`에 `ANTHROPIC_API_KEY`가 필요합니다.
+평가 세트는 [backend/eval/questions.yaml](backend/eval/questions.yaml) (20문항). 정답 SQL 확인은 `python -m app.qa.evaluate --gold`, 에이전트 채점은 `--run` (API 비용 발생, 결과는 `data/eval_runs/`). 2026-11-05 기준 20/20.
 
 스키마를 바꿀 때: `app/models.py`를 고친 뒤 `alembic revision --autogenerate -m "설명"` → 생성된 파일 검토 → `alembic upgrade head` → `pytest` → `alembic check`로 모델과 DB가 일치하는지 확인한다.
 CHECK 제약은 컬럼이 아니라 테이블 단위(`__table_args__`, `__checks__`)로 둔다. 컬럼에 붙이면 autogenerate가 빠뜨린다.

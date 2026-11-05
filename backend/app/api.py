@@ -7,10 +7,11 @@
 """
 
 from datetime import date
+from functools import lru_cache
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from app import reports
@@ -97,6 +98,24 @@ def supply_orders(
     if start and end and start > end:
         raise HTTPException(422, "start가 end보다 늦습니다")
     return reports.supply_orders(s, start, end, status, include_deleted)
+
+
+class AskBody(BaseModel):
+    question: str = Field(min_length=2, max_length=300)
+
+
+@lru_cache
+def qa_agent():
+    from app.qa.agent import Agent
+
+    return Agent()
+
+
+@app.post("/api/ask", summary="자연어 질의: 답변과 함께 실행한 SQL과 결과 표를 돌려준다")
+def ask(body: AskBody, _: Owner) -> dict:
+    out = qa_agent().ask(body.question.strip())
+    out.pop("usage", None)
+    return out
 
 
 @app.get("/api/sync-runs", summary="최근 동기화 기록")
