@@ -59,7 +59,7 @@ cp .env.example .env && nano .env
 | `ANTHROPIC_API_KEY` | Claude API 키 (자연어 질의) |
 | `DEMO_POSTGRES_PASSWORD`, `DEMO_QA_DB_PASSWORD`, `DEMO_AUTH_SECRET` | 데모용. 위 값과 **다른** 무작위 문자열 |
 | `DOMAIN` | 무료 주소 `<IP의 점을 -로>.sslip.io` (예: IP 3.38.1.2 → `3-38-1-2.sslip.io`). 도메인을 사면 이 값만 바꾸고 인증서를 새로 받는다 |
-| `CERTBOT_EMAIL` | 인증서 만료 알림을 받을 이메일 |
+| `CERTBOT_EMAIL` | 선택. Let's Encrypt 계정 이메일 (2025년부터 만료 알림 메일은 오지 않음) |
 
 무작위 문자열: `openssl rand -base64 36 | tr -d '/+='`
 
