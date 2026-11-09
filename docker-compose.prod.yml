@@ -1,0 +1,84 @@
+# 운영 서버(EC2)용. 순서와 명령은 docs/deploy.md
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# 바깥에 열리는 포트는 nginx의 80·443뿐이다. DB·API·화면은 compose 내부 네트워크에서만 서로 부른다.
+# 인터넷 → nginx(HTTPS) → web(Next.js) → /api/* → api(FastAPI) → db(Postgres)
+
+name: songhak
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-songhak}
+      POSTGRES_USER: ${POSTGRES_USER:-songhak}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?.env에 POSTGRES_PASSWORD를 설정하세요}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-songhak} -d ${POSTGRES_DB:-songhak}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-songhak}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-songhak}
+      QA_DATABASE_URL: postgresql+psycopg://qa_agent:${QA_DB_PASSWORD:?.env에 QA_DB_PASSWORD를 설정하세요}@db:5432/${POSTGRES_DB:-songhak}
+      AUTH_SECRET: ${AUTH_SECRET:?.env에 AUTH_SECRET을 설정하세요}
+      COOKIE_SECURE: "1"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        API_URL: http://api:8000
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: "${DOMAIN:?.env에 DOMAIN을 설정하세요 (예 3-38-1-2.sslip.io)}"
+    volumes:
+      # templates/*.template 안의 ${DOMAIN}을 켤 때 채워 넣는다 (nginx 공식 이미지 기능)
+      - ./deploy/nginx/templates:/etc/nginx/templates:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    # 인증서가 갱신돼도 다시 읽도록 12시간마다 설정을 새로 불러온다
+    command: ["/bin/sh", "-c", "while :; do sleep 43200; nginx -s reload; done & exec /docker-entrypoint.sh nginx -g 'daemon off;'"]
+
+  certbot:
+    image: certbot/certbot:v4.1.1
+    restart: unless-stopped
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    # 첫 발급은 deploy/first-cert.sh. 여기서는 12시간마다 만료가 가까운지 보고 갱신만 한다
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 43200 & wait $${!}; done"]
+
+volumes:
+  pgdata:
+  letsencrypt:
+  certbot-www:

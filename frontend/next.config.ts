@@ -4,6 +4,8 @@ import type { NextConfig } from "next";
 const API_URL = process.env.API_URL ?? "http://127.0.0.1:8000";
 
 const nextConfig: NextConfig = {
+  // 운영 이미지(Dockerfile)용. 개발 서버(npm run dev)에는 영향 없음
+  output: "standalone",
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${API_URL}/api/:path*` }];
   },

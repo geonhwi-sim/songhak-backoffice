@@ -5,6 +5,7 @@
 - 기획: [docs/PRD.md](docs/PRD.md)
 - 데이터 설계: [docs/erd.md](docs/erd.md)
 - 결정 기록: [docs/decisions.md](docs/decisions.md)
+- 배포: [docs/deploy.md](docs/deploy.md) (EC2, Docker Compose, Nginx, Let's Encrypt)
 
 개발 중입니다.
 
