@@ -86,6 +86,32 @@ docker compose -f docker-compose.prod.yml exec api-demo python -m app.demo.seed
 
 `https://demo.<DOMAIN>`에서 "데모로 둘러보기"로 들어간다. seed는 이름이 `_demo`로 끝나는 DB에서만 돌고(모든 데이터를 지우고 다시 만듦), 날짜를 늘려 다시 만들어도 지난 날짜의 숫자는 그대로다.
 
+## 하루 1회 동기화 (실데이터)
+
+정산 앱(RTDB)·발주 앱(Firestore)을 매일 새벽 5시(KST)에 가져온다. 데모 데이터도 같은 때 오늘까지 늘린다.
+
+**서비스 계정 (읽기 전용)**: 두 Firebase 프로젝트에 `backoffice-sync` 서비스 계정을 두고 읽기 역할만 준다.
+
+| 프로젝트 | 역할 | 키 파일 (서버 `secrets/`) |
+|---|---|---|
+| songhak-payment (정산) | Firebase Realtime Database 뷰어 | `songhak-payment-sync.json` |
+| songhak-inventory (발주) | Cloud Datastore 뷰어 | `songhak-inventory-sync.json` |
+
+```bash
+mkdir -p secrets data
+# 키 2개를 secrets/에, 과거 가격 이력(price_history.json)을 data/에 복사한 뒤
+sudo chown -R 10001:10001 secrets data && sudo chmod 400 secrets/*.json   # api 컨테이너 사용자(uid 10001)만 읽게
+docker compose -f docker-compose.prod.yml up -d api
+sh deploy/daily.sh            # 한 번 직접 실행해 확인
+
+# cron 등록 (서버 시간은 UTC → 20:00 UTC = 05:00 KST)
+( crontab -l 2>/dev/null; echo "0 20 * * * $HOME/songhak-backoffice/deploy/daily.sh >> $HOME/daily.log 2>&1" ) | crontab -
+```
+
+- 결과는 `sync_runs`에 남고 홈 화면 "마지막 동기화"에 보인다. 원본은 `data/snapshots/`에 14일치.
+- 실패 알림: `.env`에 `ALERT_URL`(예: ntfy 주제 주소)을 넣으면 실패할 때 그 주소로 보낸다.
+- 키를 바꾸려면: Google Cloud 콘솔 → IAM → 서비스 계정 → `backoffice-sync` → 키.
+
 ## 5. 업데이트
 
 ```bash
@@ -105,8 +131,6 @@ $P exec db pg_dump -U songhak songhak | gzip > ~/backup-$(date +%F).sql.gz   # �
 
 ## 아직 하지 않은 것
 
-- 실데이터 가져오기와 하루 1회 자동 동기화 (4주차 11/11)
-- 데모 데이터를 매일 오늘까지 늘리기 (자동 동기화와 함께, 11/11)
 - 자동 백업
 - 보안 점검: 의존성, 비밀키 관리 (11/12)
 

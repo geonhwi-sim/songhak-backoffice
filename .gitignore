@@ -5,6 +5,7 @@
 *serviceAccount*.json
 *-firebase-adminsdk-*.json
 data/
+secrets/
 dumps/
 *.sql.gz
 

@@ -36,6 +36,13 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:?.env에 AUTH_SECRET을 설정하세요}
       COOKIE_SECURE: "1"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # 하루 1회 동기화 (deploy/daily.sh → python -m app.etl.sync)
+      SYNC_KEYS_DIR: /secrets
+      DATA_DIR: /data
+      ALERT_URL: ${ALERT_URL:-}
+    volumes:
+      - ./secrets:/secrets:ro  # Firebase 읽기 전용 서비스 계정 키 (서버에만 있음)
+      - ./data:/data           # 가격 이력, 내려받은 원본 보관
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
       interval: 10s
