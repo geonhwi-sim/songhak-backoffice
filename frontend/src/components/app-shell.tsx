@@ -7,7 +7,7 @@ import { LogOut } from "lucide-react";
 
 import { BrandMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
-import { api, fetcher, type Me } from "@/lib/api";
+import { DEMO_MODE, api, fetcher, type Me } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -30,6 +30,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex flex-1 flex-col">
+      {DEMO_MODE && (
+        <div className="bg-foreground px-4 py-1.5 text-center text-xs text-background print:hidden">
+          공개 데모 · 숫자와 이름은 모두 가상 데이터입니다
+        </div>
+      )}
       <header className="sticky top-0 z-10 border-b bg-background/90 backdrop-blur print:hidden">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
           <Link href="/" className="mr-3 flex items-center gap-2">

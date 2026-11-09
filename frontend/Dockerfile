@@ -10,7 +10,10 @@ FROM node:22-alpine AS build
 WORKDIR /app
 # /api/* 를 넘길 FastAPI 주소. rewrites는 빌드할 때 정해지므로 빌드 인자로 받는다.
 ARG API_URL=http://api:8000
+# 데모 서버용으로 빌드할 때만 1 (로그인 창의 "데모로 둘러보기" 버튼, 데모 안내 띠)
+ARG NEXT_PUBLIC_DEMO_MODE=0
 ENV API_URL=$API_URL \
+    NEXT_PUBLIC_DEMO_MODE=$NEXT_PUBLIC_DEMO_MODE \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

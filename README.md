@@ -6,6 +6,7 @@
 - 데이터 설계: [docs/erd.md](docs/erd.md)
 - 결정 기록: [docs/decisions.md](docs/decisions.md)
 - 배포: [docs/deploy.md](docs/deploy.md) (EC2, Docker Compose, Nginx, Let's Encrypt)
+- 공개 데모: 가상의 식당 데이터(`python -m app.demo.seed`), 비밀번호 없는 데모 로그인, AI 질문 하루 20회
 
 개발 중입니다.
 

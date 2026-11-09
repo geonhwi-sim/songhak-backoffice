@@ -2,7 +2,9 @@
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
 # 바깥에 열리는 포트는 nginx의 80·443뿐이다. DB·API·화면은 compose 내부 네트워크에서만 서로 부른다.
-# 인터넷 → nginx(HTTPS) → web(Next.js) → /api/* → api(FastAPI) → db(Postgres)
+# 운영  https://DOMAIN       → nginx → web      → api      → db       (실데이터, 사장님 계정)
+# 데모  https://demo.DOMAIN  → nginx → web-demo → api-demo → db-demo  (가짜 데이터, 비밀번호 없는 데모 계정)
+# 데모는 DB·비밀번호·로그인 서명 키가 모두 따로라, 데모에서 받은 쿠키로 운영에 들어갈 수 없다.
 
 name: songhak
 
@@ -51,11 +53,63 @@ services:
       api:
         condition: service_healthy
 
+  # ── 공개 데모 ──
+
+  db-demo:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: songhak_demo  # seed는 이름이 _demo로 끝나는 DB에서만 돈다
+      POSTGRES_USER: songhak
+      POSTGRES_PASSWORD: ${DEMO_POSTGRES_PASSWORD:?.env에 DEMO_POSTGRES_PASSWORD를 설정하세요}
+    volumes:
+      - pgdata-demo:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U songhak -d songhak_demo"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api-demo:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db-demo:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://songhak:${DEMO_POSTGRES_PASSWORD}@db-demo:5432/songhak_demo
+      QA_DATABASE_URL: postgresql+psycopg://qa_agent:${DEMO_QA_DB_PASSWORD:?.env에 DEMO_QA_DB_PASSWORD를 설정하세요}@db-demo:5432/songhak_demo
+      AUTH_SECRET: ${DEMO_AUTH_SECRET:?.env에 DEMO_AUTH_SECRET을 설정하세요 (AUTH_SECRET과 다른 값)}
+      COOKIE_SECURE: "1"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEMO_MODE: "1"
+      ASK_DAILY_LIMIT: ${DEMO_ASK_DAILY_LIMIT:-20}  # 공개라 API 비용을 막는다 (모든 방문자 합계)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  web-demo:
+    build:
+      context: ./frontend
+      args:
+        API_URL: http://api-demo:8000
+        NEXT_PUBLIC_DEMO_MODE: "1"
+    restart: unless-stopped
+    depends_on:
+      api-demo:
+        condition: service_healthy
+
+  # ── 입구 ──
+
   nginx:
     image: nginx:1.28-alpine
     restart: unless-stopped
     depends_on:
       - web
+      - web-demo
     ports:
       - "80:80"
       - "443:443"
@@ -80,5 +134,6 @@ services:
 
 volumes:
   pgdata:
+  pgdata-demo:
   letsencrypt:
   certbot-www:

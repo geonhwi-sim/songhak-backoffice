@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import useSWR from "swr";
 import { ArrowUp, CircleAlert, Code } from "lucide-react";
 
 import { PageHeader } from "@/components/common";
@@ -10,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ApiError, api, type AskResult } from "@/lib/api";
+import { ApiError, api, fetcher, type AskQuota, type AskResult } from "@/lib/api";
 
 const EXAMPLES = [
   "지난달 정산처별 금액 알려줘",
@@ -25,6 +26,10 @@ export default function AskPage() {
   const [question, setQuestion] = useState("");
   const [entries, setEntries] = useState<Entry[]>([]);
   const pending = entries.length > 0 && !entries[0].result && !entries[0].error;
+  // 하루 질문 제한(데모 서버)이 있을 때만 남은 횟수를 보여 준다
+  const { data: quota, mutate: setQuota } = useSWR<AskQuota>("/api/ask/quota", fetcher);
+  const limited = quota?.limit != null;
+  const usedUp = limited && quota.remaining === 0;
 
   async function ask(q: string) {
     q = q.trim();
@@ -33,9 +38,12 @@ export default function AskPage() {
     setEntries((es) => [{ question: q }, ...es]);
     const done = (patch: Partial<Entry>) => setEntries((es) => [{ ...es[0], ...patch }, ...es.slice(1)]);
     try {
-      done({ result: await api<AskResult>("/api/ask", { method: "POST", body: JSON.stringify({ question: q }) }) });
+      const result = await api<AskResult>("/api/ask", { method: "POST", body: JSON.stringify({ question: q }) });
+      done({ result });
+      if (result.remaining_today != null && quota) setQuota({ ...quota, remaining: result.remaining_today }, false);
     } catch (err) {
       done({ error: err instanceof ApiError ? err.message : "서버에 연결하지 못했습니다" });
+      if (err instanceof ApiError && err.status === 429 && quota) setQuota({ ...quota, remaining: 0 }, false);
     }
   }
 
@@ -44,7 +52,13 @@ export default function AskPage() {
       <PageHeader
         title="질문하기"
         description="정산·인건비·발주 데이터에 대해 물어보세요. 답과 함께 실제로 실행한 SQL과 결과 표를 보여 줍니다."
-      />
+      >
+        {limited && (
+          <Badge variant="outline" className="tabular-nums">
+            오늘 남은 질문 {quota.remaining}/{quota.limit}
+          </Badge>
+        )}
+      </PageHeader>
 
       <form
         onSubmit={(e) => {
@@ -61,7 +75,7 @@ export default function AskPage() {
           aria-label="질문"
           className="h-10"
         />
-        <Button type="submit" size="lg" className="h-10" disabled={pending || question.trim().length < 2}>
+        <Button type="submit" size="lg" className="h-10" disabled={pending || usedUp || question.trim().length < 2}>
           <ArrowUp />
           묻기
         </Button>
@@ -70,7 +84,7 @@ export default function AskPage() {
       {entries.length === 0 && (
         <div className="mt-4 flex flex-wrap gap-2">
           {EXAMPLES.map((ex) => (
-            <Button key={ex} variant="outline" size="sm" onClick={() => ask(ex)}>
+            <Button key={ex} variant="outline" size="sm" disabled={usedUp} onClick={() => ask(ex)}>
               {ex}
             </Button>
           ))}

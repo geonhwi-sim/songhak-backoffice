@@ -123,4 +123,10 @@ export type AskResult = {
   rows: (string | number | boolean | null)[][];
   truncated: boolean;
   seconds: number;
+  remaining_today?: number; // 하루 질문 제한이 있는 서버(데모)에서만
 };
+
+export type AskQuota = { limit: number | null; remaining: number | null };
+
+// 데모 서버용 빌드에서만 "1" (Dockerfile 빌드 인자). 빌드할 때 코드에 박힌다.
+export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "1";

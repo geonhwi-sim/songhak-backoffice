@@ -1,7 +1,9 @@
 # 배포 (AWS EC2)
 
 ```
-인터넷 ─443─▶ nginx ──▶ web (Next.js :3000) ──/api/*──▶ api (FastAPI :8000) ──▶ db (Postgres :5432)
+                 ┌─ DOMAIN       ──▶ web      ──/api/*──▶ api      ──▶ db        운영 (실데이터)
+인터넷 ─443─▶ nginx
+                 └─ demo.DOMAIN  ──▶ web-demo ──/api/*──▶ api-demo ──▶ db-demo   공개 데모 (가짜 데이터)
           80 → 443으로 보냄          certbot: 12시간마다 인증서 갱신 확인
 ```
 
@@ -9,6 +11,8 @@
 - 바깥에 열리는 포트는 nginx의 80·443뿐이다. DB·API는 compose 내부 네트워크에서만 접속할 수 있다.
 - api 컨테이너는 켤 때마다 `alembic upgrade head`와 질의용 읽기 전용 계정 설정을 실행한다. 둘 다 여러 번 실행해도 안전하다.
 - 로그인 쿠키는 `Secure`(HTTPS 전용)로 고정된다. 그래서 HTTPS 없이는 로그인이 되지 않는다.
+- 데모는 DB·DB 비밀번호·로그인 서명 키(`DEMO_AUTH_SECRET`)가 모두 운영과 따로다. 서명 키가 같으면 데모에서 받은 쿠키로 운영에 들어갈 수 있으므로 반드시 다른 값을 쓴다.
+- 데모 보호: 하루 질문 20회(모든 방문자 합계, `DEMO_ASK_DAILY_LIMIT`), IP당 API 초당 5회(nginx).
 
 ## 1. AWS
 
@@ -53,6 +57,7 @@ cp .env.example .env && nano .env
 | `QA_DB_PASSWORD` | 무작위 문자열 (질의용 읽기 전용 계정) |
 | `AUTH_SECRET` | 무작위 문자열 48자 이상 |
 | `ANTHROPIC_API_KEY` | Claude API 키 (자연어 질의) |
+| `DEMO_POSTGRES_PASSWORD`, `DEMO_QA_DB_PASSWORD`, `DEMO_AUTH_SECRET` | 데모용. 위 값과 **다른** 무작위 문자열 |
 | `DOMAIN` | 무료 주소 `<IP의 점을 -로>.sslip.io` (예: IP 3.38.1.2 → `3-38-1-2.sslip.io`). 도메인을 사면 이 값만 바꾸고 인증서를 새로 받는다 |
 | `CERTBOT_EMAIL` | 인증서 만료 알림을 받을 이메일 |
 
@@ -61,7 +66,7 @@ cp .env.example .env && nano .env
 ## 4. 인증서 → 실행
 
 ```bash
-sh deploy/first-cert.sh                                   # 처음 한 번 (nginx를 켜기 전)
+sh deploy/first-cert.sh                                   # 처음 한 번 (nginx를 켜기 전). DOMAIN과 demo.DOMAIN
 docker compose -f docker-compose.prod.yml up -d --build   # 첫 빌드는 몇 분 걸린다
 docker compose -f docker-compose.prod.yml ps              # 5개 모두 Up, api는 healthy
 
@@ -69,7 +74,17 @@ docker compose -f docker-compose.prod.yml ps              # 5개 모두 Up, api�
 docker compose -f docker-compose.prod.yml exec api python -m app.users add 이메일 --role owner
 ```
 
+빌드 중 `Failed to fetch ... from Google Fonts`가 나오면 글꼴을 내려받다 네트워크가 끊긴 것이다. 같은 명령을 다시 실행한다.
+
 `https://<DOMAIN>`으로 들어가 로그인 → 홈 → 질문하기를 확인한다.
+
+데모 데이터 (7/1 ~ 오늘, 가상의 정산처 5곳·직원 2명·발주):
+
+```bash
+docker compose -f docker-compose.prod.yml exec api-demo python -m app.demo.seed
+```
+
+`https://demo.<DOMAIN>`에서 "데모로 둘러보기"로 들어간다. seed는 이름이 `_demo`로 끝나는 DB에서만 돌고(모든 데이터를 지우고 다시 만듦), 날짜를 늘려 다시 만들어도 지난 날짜의 숫자는 그대로다.
 
 ## 5. 업데이트
 
@@ -91,7 +106,7 @@ $P exec db pg_dump -U songhak songhak | gzip > ~/backup-$(date +%F).sql.gz   # �
 ## 아직 하지 않은 것
 
 - 실데이터 가져오기와 하루 1회 자동 동기화 (4주차 11/11)
-- 데모 DB와 데모 계정 (11/10)
+- 데모 데이터를 매일 오늘까지 늘리기 (자동 동기화와 함께, 11/11)
 - 자동 백업
 - 보안 점검: 의존성, 비밀키 관리 (11/12)
 

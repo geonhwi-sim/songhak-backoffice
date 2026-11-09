@@ -11,6 +11,6 @@ set -a; . ./.env; set +a
 
 # nginx가 아직 80번을 쓰지 않으므로 certbot이 직접 80번으로 확인 요청을 받는다
 docker compose -f docker-compose.prod.yml run --rm -p 80:80 --entrypoint certbot certbot \
-  certonly --standalone -d "$DOMAIN" --email "$CERTBOT_EMAIL" --agree-tos --no-eff-email
+  certonly --standalone -d "$DOMAIN" -d "demo.$DOMAIN" --email "$CERTBOT_EMAIL" --agree-tos --no-eff-email
 
-echo "인증서 발급 완료: $DOMAIN"
+echo "인증서 발급 완료: $DOMAIN, demo.$DOMAIN"
