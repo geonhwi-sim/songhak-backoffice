@@ -2,6 +2,8 @@
 
 # 데모는 공개라 한 IP가 API를 너무 자주 부르지 못하게 한다 (초당 5회, 순간 20회까지)
 limit_req_zone $binary_remote_addr zone=demo_api:10m rate=5r/s;
+# 로그인 시도는 IP당 분당 10회(순간 5회 더)까지. 계정별 잠금(5회 실패 10분)과 함께 비밀번호 대입을 막는다
+limit_req_zone $binary_remote_addr zone=login:10m rate=10r/m;
 limit_req_status 429;
 
 # 도메인 없이 IP로 들어오는 요청(자동 스캐너 등)은 응답 없이 끊는다
@@ -49,6 +51,21 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # 이 사이트의 파일만 불러온다 (외부 스크립트·이미지·전송 차단). Next.js가 넣는 인라인 스크립트·스타일은 허용
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
+
+    location ~ ^/api/auth/(login|demo)$ {
+        limit_req zone=login burst=5 nodelay;
+        proxy_pass http://web:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffer_size 32k;
+        proxy_buffers 8 32k;
+        proxy_busy_buffers_size 64k;
+    }
 
     location / {
         proxy_pass http://web:3000;
@@ -87,6 +104,21 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # 이 사이트의 파일만 불러온다 (외부 스크립트·이미지·전송 차단). Next.js가 넣는 인라인 스크립트·스타일은 허용
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
+
+    location ~ ^/api/auth/(login|demo)$ {
+        limit_req zone=login burst=5 nodelay;
+        proxy_pass http://web-demo:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffer_size 32k;
+        proxy_buffers 8 32k;
+        proxy_busy_buffers_size 64k;
+    }
 
     location /api/ {
         limit_req zone=demo_api burst=20 nodelay;

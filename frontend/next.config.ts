@@ -6,6 +6,8 @@ const API_URL = process.env.API_URL ?? "http://127.0.0.1:8000";
 const nextConfig: NextConfig = {
   // 운영 이미지(Dockerfile)용. 개발 서버(npm run dev)에는 영향 없음
   output: "standalone",
+  // 응답 헤더에 프레임워크 이름(X-Powered-By: Next.js)을 드러내지 않는다
+  poweredByHeader: false,
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${API_URL}/api/:path*` }];
   },
