@@ -118,7 +118,11 @@ sh deploy/daily.sh            # 한 번 직접 실행해 확인
 git pull
 docker compose -f docker-compose.prod.yml up -d --build   # 바뀐 이미지만 다시 빌드한다
 docker image prune -f                                     # 지난 이미지 정리
+docker builder prune -af                                  # 빌드 캐시 정리 (디스크 20GB를 넘지 않게)
+df -h /                                                   # 디스크 사용량 확인 (80%가 넘으면 원인부터 확인)
 ```
+
+빌드 캐시는 다음 빌드를 빠르게 하려고 남기는 중간 파일이라 지워도 서비스와 데이터에는 영향이 없다. 지우면 다음 빌드만 처음처럼 몇 분 더 걸린다. 정리하지 않으면 업데이트할 때마다 몇 GB씩 쌓여 디스크가 차고, 디스크가 차면 DB 쓰기와 동기화가 멈춘다.
 
 ## 자주 쓰는 명령
 
