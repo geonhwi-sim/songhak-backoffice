@@ -14,8 +14,11 @@ from functools import lru_cache
 from threading import Lock
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Response
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, StringConstraints
 from sqlalchemy import select, text
 
 from app import models as m
@@ -28,7 +31,38 @@ log = logging.getLogger("songhak.api")
 
 app = FastAPI(title="송학구이 백오피스 API", version="0.2.0")
 
+# 입력 검증. 앞뒤 공백을 먼저 지운 뒤 길이를 잰다 (공백만 있는 질문이 AI 호출까지 가지 않게)
+QUESTION_MAX = 300
+Question = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=QUESTION_MAX)]
+Email = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=254)]
+# 비밀번호 해시(scrypt)는 입력이 길수록 오래 걸리므로 상한을 둔다. 계정 만들 때도 같은 상한(app/users.py)
+PASSWORD_MAX = 128
+Password = Annotated[str, StringConstraints(min_length=1, max_length=PASSWORD_MAX)]
+
+# 검증 실패(422)를 화면에 그대로 보여 줄 수 있는 한 문장으로. 필드 이름 → 안내 문구
+FIELD_MESSAGES = {
+    "question": f"질문은 2~{QUESTION_MAX}자로 입력해 주세요.",
+    "email": "이메일을 확인해 주세요.",
+    "password": f"비밀번호를 입력해 주세요 ({PASSWORD_MAX}자 이하).",
+    "month": "월은 2026-09처럼 YYYY-MM 형식이어야 합니다.",
+}
+
 Month = Annotated[str, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="YYYY-MM", examples=["2026-09"])]
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    """detail은 사람이 읽는 한 문장(화면이 그대로 보여 준다), errors는 원래의 상세 목록."""
+    errors = exc.errors()
+    first = errors[0] if errors else {}
+    field = str(first.get("loc", ["", ""])[-1])
+    if field in FIELD_MESSAGES:
+        message = FIELD_MESSAGES[field]
+    elif first.get("type") == "json_invalid" or not field or field.isdigit():  # JSON이 깨졌거나 본문 자체가 이상함
+        message = "요청 형식이 올바르지 않습니다."
+    else:
+        message = f"입력값을 확인해 주세요: {field}"
+    return JSONResponse(status_code=422, content={"detail": message, "errors": jsonable_encoder(errors)})
 
 
 @app.get("/api/health")
@@ -41,8 +75,8 @@ def health(s: DB) -> dict:
 
 
 class LoginBody(BaseModel):
-    email: str
-    password: str
+    email: Email
+    password: Password
 
 
 def user_out(u) -> dict:
@@ -120,7 +154,7 @@ def supply_orders(
 
 
 class AskBody(BaseModel):
-    question: str = Field(min_length=2, max_length=300)
+    question: Question
 
 
 @lru_cache
@@ -172,7 +206,7 @@ def ask(body: AskBody, _: Owner) -> dict:
     today = datetime.now(KST).date()
     remaining = ask_limit.take(today)
     try:
-        out = qa_agent().ask(body.question.strip())
+        out = qa_agent().ask(body.question)
     except Exception:
         # Claude API 장애·키 없음 등. 사용자 잘못이 아니므로 횟수를 돌려준다
         ask_limit.give_back(today)

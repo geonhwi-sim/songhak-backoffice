@@ -21,6 +21,8 @@ const EXAMPLES = [
   "8월에 할인으로 깎아 준 금액은?",
 ];
 
+const QUESTION_MAX = 300;
+
 type Entry = { question: string; result?: AskResult; error?: string };
 
 export default function AskPage() {
@@ -68,14 +70,29 @@ export default function AskPage() {
         }}
         className="flex gap-2"
       >
-        <Input
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="예: 9월 정산 합계가 얼마야?"
-          maxLength={300}
-          aria-label="질문"
-          className="h-10"
-        />
+        <div className="relative flex-1">
+          <Input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="예: 9월 정산 합계가 얼마야?"
+            maxLength={QUESTION_MAX}
+            aria-label="질문"
+            aria-describedby="question-count"
+            className={question.length >= QUESTION_MAX - 50 ? "h-10 pr-16" : "h-10"}
+          />
+          {/* 300자 제한에 가까워지면 남은 글자 수를 보여 준다 (서버도 같은 제한) */}
+          {question.length >= QUESTION_MAX - 50 && (
+            <span
+              id="question-count"
+              aria-live="polite"
+              className={`absolute top-1/2 right-3 -translate-y-1/2 text-xs tabular-nums ${
+                question.length >= QUESTION_MAX ? "text-destructive" : "text-muted-foreground"
+              }`}
+            >
+              {question.length}/{QUESTION_MAX}
+            </span>
+          )}
+        </div>
         <Button type="submit" size="lg" className="h-10" disabled={pending || usedUp || question.trim().length < 2}>
           <ArrowUp />
           묻기

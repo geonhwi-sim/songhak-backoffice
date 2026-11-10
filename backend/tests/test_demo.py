@@ -142,7 +142,8 @@ def test_demo_login(client, session, monkeypatch):
     assert r.status_code == 200 and r.json()["email"] == DEMO_EMAIL
     assert client.get("/api/auth/me").json()["email"] == DEMO_EMAIL  # 받은 쿠키로 로그인 유지
     # 데모 계정은 비밀번호가 없어 비밀번호 로그인으로는 못 들어간다
-    assert client.post("/api/auth/login", json={"email": DEMO_EMAIL, "password": ""}).status_code == 401
+    assert client.post("/api/auth/login", json={"email": DEMO_EMAIL, "password": ""}).status_code == 422
+    assert client.post("/api/auth/login", json={"email": DEMO_EMAIL, "password": "anything"}).status_code == 401
 
 
 # ── 하루 질문 제한 ──

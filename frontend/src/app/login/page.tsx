@@ -65,11 +65,11 @@ export default function LoginPage() {
           <form onSubmit={onSubmit} className="grid gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="email">이메일</Label>
-              <Input id="email" name="email" type="email" autoComplete="username" required autoFocus />
+              <Input id="email" name="email" type="email" autoComplete="username" required maxLength={254} autoFocus />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="password">비밀번호</Label>
-              <Input id="password" name="password" type="password" autoComplete="current-password" required />
+              <Input id="password" name="password" type="password" autoComplete="current-password" required maxLength={128} />
             </div>
             {error && (
               <p role="alert" className="text-sm text-destructive">

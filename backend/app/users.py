@@ -20,6 +20,7 @@ from app.auth import hash_password
 from app.db import SessionLocal
 
 MIN_LENGTH = 10
+MAX_LENGTH = 128  # 로그인 API의 비밀번호 상한(app.api.PASSWORD_MAX)과 같게
 
 
 def read_password(env: str | None) -> str:
@@ -31,6 +32,8 @@ def read_password(env: str | None) -> str:
             raise SystemExit("두 비밀번호가 다릅니다")
     if len(pw) < MIN_LENGTH:
         raise SystemExit(f"비밀번호는 {MIN_LENGTH}자 이상이어야 합니다")
+    if len(pw) > MAX_LENGTH:
+        raise SystemExit(f"비밀번호는 {MAX_LENGTH}자 이하여야 합니다")
     return pw
 
 
