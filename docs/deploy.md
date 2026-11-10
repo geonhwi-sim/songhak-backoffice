@@ -136,7 +136,7 @@ $P exec db pg_dump -U songhak songhak | gzip > ~/backup-$(date +%F).sql.gz   # �
 ## 아직 하지 않은 것
 
 - 자동 백업
-- 보안 점검: 의존성, 비밀키 관리 (11/12)
+- 앱 DB 계정 분리: 지금은 앱이 superuser로 접속한다 (마이그레이션 계정과 앱 계정을 나눌 예정)
 
 ## 로컬에서 미리 확인한 것 (2026-11-09)
 

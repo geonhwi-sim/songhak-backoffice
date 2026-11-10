@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ApiError, api, fetcher, type AskQuota, type AskResult } from "@/lib/api";
+import { columnLabel } from "@/lib/column-labels";
 
 const EXAMPLES = [
   "지난달 정산처별 금액 알려줘",
@@ -130,8 +131,14 @@ function Answer({ entry }: { entry: Entry }) {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      {r.columns.map((c) => (
-                        <TableHead key={c}>{c}</TableHead>
+                      {r.columns.map((c, j) => (
+                        <TableHead
+                          key={c}
+                          title={c}
+                          className={r.rows.some((row) => typeof row[j] === "number") ? "text-right" : undefined}
+                        >
+                          {columnLabel(c)}
+                        </TableHead>
                       ))}
                     </TableRow>
                   </TableHeader>
