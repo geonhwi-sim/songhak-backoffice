@@ -73,6 +73,7 @@ class Catalog:
     menus: dict[str, dict] = field(default_factory=dict)  # source_id → name, category, active
     options: dict[str, dict] = field(default_factory=dict)  # source_id → menu, name, active
     deleted_menus: dict[str, dict] = field(default_factory=dict)  # 직접 입력 항목으로 바꿀 지운 메뉴
+    missing_items: dict[str, list[dict]] = field(default_factory=dict)  # 주문 source_id → 앱에서 빠진 항목
     menu_prices: dict[str, list[Period]] = field(default_factory=dict)
     option_prices: dict[str, list[Period]] = field(default_factory=dict)
     place_pricing: dict[tuple[str, str], list[Period]] = field(default_factory=dict)  # (정산처, 메뉴)
@@ -106,6 +107,9 @@ def build_catalog(data: dict, history: dict) -> Catalog:
         ]
     for mn in history.get("deleted_menus", []):
         cat.deleted_menus[mn["source_menu_id"]] = {"name": mn["name"], "price": mn["price"]}
+    # 앱 기록에서 빠졌지만 실제로 청구한 항목 (통장 결제액 대조로 확인). 해당 주문에 메뉴 줄로 더한다
+    for it in history.get("missing_items", []):
+        cat.missing_items.setdefault(it["order_id"], []).append({"menuId": it["menu"], "qty": it["qty"]})
 
     # 이력에도 없는 지운 메뉴·옵션은 0원짜리 비활성 행으로 두고 검토 대상으로 남긴다
     for order in to_list(data.get("orders")):
@@ -181,7 +185,7 @@ def merge_legacy_options(items: list[dict], cat: Catalog) -> list[dict]:
 def convert_items(order: dict, cat: Catalog, merge: bool = True) -> list[Line]:
     day, place = to_date(order["date"]), order["placeId"]
     rate = period_at(cat.discount_rates, day).value
-    items = to_list(order.get("items"))
+    items = to_list(order.get("items")) + cat.missing_items.get(order["id"], [])
     if merge:
         items = merge_legacy_options(items, cat)
 

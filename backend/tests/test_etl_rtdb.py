@@ -94,6 +94,22 @@ def test_only_deleted_menus_and_options_need_review(data, history):
     assert all(ln.price_source == "estimated" for ln in lines if ln.needs_review)
 
 
+def test_missing_items_are_added_as_menu_lines(data, history):
+    """앱 기록에서 빠진 항목(missing_items)은 그 주문에만, 그날 가격의 메뉴 줄로 더해진다."""
+    order = next(o for o in to_list(data["orders"]) if o["items"])
+    menu = next(it["menuId"] for it in to_list(order["items"]) if not it.get("custom") and not it.get("optionId"))
+    base = sum(ln.amount for ln in convert_items(order, build_catalog(data, history)))
+
+    extra = {**history, "missing_items": [*history.get("missing_items", []),
+                                          {"order_id": order["id"], "menu": menu, "qty": 2}]}
+    lines = convert_items(order, build_catalog(data, extra))
+    added = sum(ln.amount for ln in convert_items({**order, "items": [{"menuId": menu, "qty": 2}]},
+                                                  build_catalog(data, history), merge=False))
+    assert sum(ln.amount for ln in lines) == base + added
+    other = next(o for o in to_list(data["orders"]) if o["id"] != order["id"])
+    assert convert_items(other, build_catalog(data, extra)) == convert_items(other, build_catalog(data, history))
+
+
 # ── DB: 가져오기 ──
 
 
