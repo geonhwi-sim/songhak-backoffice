@@ -5,6 +5,10 @@
 **공개 데모 → https://demo.43-202-96-199.sslip.io**
 "데모로 둘러보기"를 누르면 비밀번호 없이 들어갑니다. 데모의 숫자와 이름은 모두 가상 데이터이고, AI 질문은 하루 20회까지 쓸 수 있습니다.
 
+**데모 영상 (1분 15초) → [docs/demo/demo.mp4](docs/demo/demo.mp4)**: 로그인 → 홈 → 정산서 → 인건비 → 자연어 질문
+
+![자연어 질문: 질문 → SQL 실행 → 답 + 결과 표 + 실행한 SQL](docs/demo/ask.gif)
+
 ![홈 화면](docs/screenshots/02-home.png)
 
 ## 문제
