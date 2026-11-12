@@ -63,7 +63,7 @@ flowchart LR
 | 공개 데모가 API 비용을 무한히 쓰면 안 된다 | 하루 질문 20회(실패한 질문은 횟수에서 빼 줌), IP당 요청 수 제한을 둔다. 데모는 DB와 로그인 서명 키까지 운영과 분리한다 |
 | 로그인 정보가 화면 코드에 노출되면 안 된다 | scrypt 해시, JWT를 **HttpOnly·Secure 쿠키**로 전달한다. Next.js가 `/api/*`를 같은 출처로 넘긴다. 5번 틀리면 10분 잠금, IP당 분당 10회로 제한한다 |
 
-이 밖의 결정과 이유는 [docs/decisions.md](docs/decisions.md)에, 원인을 찾느라 오래 걸린 문제 3건은 [docs/debugging.md](docs/debugging.md)에 있고, 기획은 [docs/PRD.md](docs/PRD.md)에 있습니다.
+이 밖의 결정과 이유는 [docs/decisions.md](docs/decisions.md)에, 원인을 찾느라 오래 걸린 문제 3건은 [docs/debugging.md](docs/debugging.md)에, AI가 쓴 코드를 검증한 방법은 [docs/ai-code-checklist.md](docs/ai-code-checklist.md)에 있고, 기획은 [docs/PRD.md](docs/PRD.md)에 있습니다.
 
 ## 기술 스택
 
