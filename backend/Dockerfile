@@ -8,6 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# 정산서 PDF용 한글 글꼴 (나눔고딕)
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-nanum && rm -rf /var/lib/apt/lists/*
+
 # 의존성을 먼저 깔아 두면 코드만 바뀔 때 이 단계는 캐시를 쓴다
 COPY requirements.txt .
 RUN pip install -r requirements.txt

@@ -56,6 +56,16 @@ test("정산서 합계가 목록 금액, 항목 금액의 합과 같다", async 
   }
 });
 
+test("정산서를 PDF로 내려받는다", async ({ page }) => {
+  await demoLogin(page);
+  await page.getByRole("link", { name: "정산", exact: true }).first().click();
+  await page.locator("button[aria-pressed]").first().click();
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "PDF" }).click()]);
+  expect(download.suggestedFilename()).toMatch(/^\d{4}-\d{2} .+ 정산서\.pdf$/);
+  const head = await (await download.createReadStream()).read(5);
+  expect(String(head)).toBe("%PDF-");
+});
+
 test("인건비 화면에 기본급·주휴수당과 규칙 설명이 보인다", async ({ page }) => {
   await demoLogin(page);
   await page.getByRole("link", { name: "인건비", exact: true }).first().click();

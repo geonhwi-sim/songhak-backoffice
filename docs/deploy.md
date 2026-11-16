@@ -136,6 +136,12 @@ nginx는 켜질 때 한 번만 `web`, `web-demo` 같은 컨테이너 이름을 �
 
 빌드 캐시는 다음 빌드를 빠르게 하려고 남기는 중간 파일이라 지워도 서비스와 데이터에는 영향이 없다. 지우면 다음 빌드만 처음처럼 몇 분 더 걸린다. 정리하지 않으면 업데이트할 때마다 몇 GB씩 쌓여 디스크가 차고, 디스크가 차면 DB 쓰기와 동기화가 멈춘다.
 
+## 정산서 PDF
+
+- 정산 화면의 **PDF** 버튼은 `/api/settlements/{id}/pdf?month=`로 그때그때 만든다(fpdf2, 나눔고딕). 거래처에 보내는 문서라 화면의 내부 표시(추정 가격, 확인 필요)는 넣지 않고 할인만 표시한다.
+- 매달 보관: `daily.sh`가 동기화 뒤에 `python -m app.invoices`를 부른다. 지난달 정산서가 없으면 정산처마다 `data/invoices/YYYY-MM/YYYY-MM 정산처 정산서.pdf`로 만든다. 이미 있으면 덮어쓰지 않는다. 그달 보낸 원본으로 남기려는 것이다.
+- 1일 05:00 뒤에 지난달 주문을 고쳤다면 보관본은 그대로다. 화면의 PDF 버튼으로 새로 만들고, 보관본을 바꾸려면 파일을 지운 뒤 `docker compose -f docker-compose.prod.yml exec api python -m app.invoices 2026-10`을 실행한다.
+
 ## 6. 백업과 복원
 
 - **매일 백업:** `deploy/daily.sh`가 05:00 동기화 **직전에** `deploy/backup.sh`를 부른다. 운영 DB를 `pg_dump` 사용자 지정 형식(압축)으로 `~/backups/songhak-YYYY-MM-DD.dump`에 저장하고 14일치만 남긴다. 폴더는 700, 파일은 600 권한.

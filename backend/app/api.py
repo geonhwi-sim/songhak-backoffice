@@ -134,6 +134,21 @@ def settlement_detail(s: DB, _: Owner, place_id: int, month: Month) -> dict:
     return detail
 
 
+@app.get("/api/settlements/{place_id}/pdf", summary="정산서 PDF 내려받기", response_class=Response,
+         responses={200: {"content": {"application/pdf": {}}}})
+def settlement_pdf(s: DB, _: Owner, place_id: int, month: Month) -> Response:
+    from urllib.parse import quote
+
+    from app.invoices import file_name, render
+
+    detail = reports.settlement_detail(s, place_id, month)
+    if detail is None:
+        raise HTTPException(404, "정산처를 찾을 수 없습니다")
+    # 한글 파일 이름은 filename*(UTF-8)로, 옛 브라우저용 filename은 영문으로 준다
+    disposition = f"attachment; filename=\"invoice-{month}-{place_id}.pdf\"; filename*=UTF-8''{quote(file_name(detail))}"
+    return Response(render(detail), media_type="application/pdf", headers={"Content-Disposition": disposition})
+
+
 @app.get("/api/payroll", summary="급여 기간(전월 17일 ~ 당월 16일)의 직원별 인건비")
 def payroll(s: DB, _: Owner, month: Month) -> dict:
     return reports.payroll(s, month)

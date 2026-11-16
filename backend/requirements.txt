@@ -9,3 +9,4 @@ pyjwt>=2.9,<3
 anthropic>=2.5,<3
 langgraph>=1.2,<2
 google-auth[requests]>=2.30,<3
+fpdf2>=2.8,<2.9

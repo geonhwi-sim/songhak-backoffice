@@ -111,6 +111,32 @@ def test_settlement_detail_lists_orders_for_invoice(client):
     assert c.get("/api/settlements/999999", params={"month": "2026-09"}).status_code == 404
 
 
+def test_settlement_pdf_downloads_with_korean_file_name(client):
+    c, ids = client
+    r = c.get(f"/api/settlements/{ids['place']}/pdf", params={"month": "2026-09"})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content.startswith(b"%PDF-")
+    assert "filename*=UTF-8''2026-09%20%ED%85%8C%EC%8A%A4%ED%8A%B8" in r.headers["content-disposition"]  # "2026-09 테스트"
+    assert c.get("/api/settlements/999999/pdf", params={"month": "2026-09"}).status_code == 404
+
+
+def test_monthly_archive_makes_each_place_once(client, tmp_path):
+    from app.deps import get_session  # client 픽스처의 세션을 그대로 쓴다
+    from app.invoices import archive_month, last_month
+
+    s = app.dependency_overrides[get_session]()
+    made = archive_month(s, "2026-09", tmp_path)
+    mine = [p for p in made if "테스트 정산처" in p.name]
+    assert len(mine) == 1 and mine[0].read_bytes().startswith(b"%PDF-")
+    assert mine[0].parent.name == "2026-09"
+    # 두 번째 실행은 이미 있는 파일을 덮어쓰지 않는다 (그달 보낸 원본 유지)
+    before = mine[0].stat().st_mtime_ns
+    assert [p for p in archive_month(s, "2026-09", tmp_path) if "테스트 정산처" in p.name] == []
+    assert mine[0].stat().st_mtime_ns == before
+    assert (last_month(date(2026, 12, 1)), last_month(date(2027, 1, 15))) == ("2026-11", "2026-12")
+
+
 def test_payroll(client):
     c, ids = client
     body = c.get("/api/payroll", params={"month": "2026-11"}).json()

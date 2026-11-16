@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { Printer } from "lucide-react";
+import { FileDown, Printer } from "lucide-react";
 
 import { Empty, ErrorBox, Loading, MonthPicker, PageHeader } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -120,10 +120,21 @@ function Invoice({ placeId, month }: { placeId: number; month: string }) {
             {monthLabel(month)} ({md(data.start)} ~ {md(data.end)}) · 주문 {data.orders.length}건
           </CardDescription>
         </div>
-        <Button variant="outline" size="sm" onClick={() => window.print()} className="print:hidden">
-          <Printer />
-          인쇄
-        </Button>
+        <div className="flex gap-2 print:hidden">
+          {/* 같은 출처(/api)라 로그인 쿠키가 따라간다. 거래처에 보내는 문서라 화면의 내부 표시는 빠진다 */}
+          <a
+            href={`/api/settlements/${placeId}/pdf?month=${month}`}
+            download
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            <FileDown />
+            PDF
+          </a>
+          <Button variant="outline" size="sm" onClick={() => window.print()}>
+            <Printer />
+            인쇄
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <Table>
