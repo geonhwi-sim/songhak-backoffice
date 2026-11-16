@@ -26,3 +26,7 @@ Thumbs.db
 
 # Python 캐시
 .pytest_cache/
+
+# Playwright 결과
+test-results/
+playwright-report/

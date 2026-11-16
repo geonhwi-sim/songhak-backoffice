@@ -50,7 +50,7 @@ flowchart LR
 
 - **금액 검증:** 실데이터로 7~9월 정산 금액이 기존 앱과 **1원 단위까지 일치**하고, 7~10월 인건비가 실제 지급액과 일치합니다.
 - **AI 질문 평가:** 평가 세트 20문항 중 **20/20**을 맞혔습니다. 문항당 약 5초, 약 0.02달러가 듭니다. 데모 DB에서도 20/20입니다. 평가 세트는 [backend/eval/questions.yaml](backend/eval/questions.yaml)에 있습니다.
-- **테스트:** pytest **110개**가 통과합니다. 검증 대상은 DB 제약, ETL, 정산·인건비 계산, 로그인·권한, 데모, 동기화입니다.
+- **테스트:** pytest **110개**가 통과합니다. 검증 대상은 DB 제약, ETL, 정산·인건비 계산, 로그인·권한, 데모, 동기화입니다. 브라우저 E2E **9개**(Playwright)는 공개 데모에서 로그인 → 정산서 → 인건비 → 질문하기 → 로그아웃을 확인하고, 정산서 합계가 목록 금액, 항목 합과 같은지도 봅니다.
 - **기존 앱 버그 수정:** 금액을 맞추다가 기존 정산 앱의 주휴수당 중복 계산(월 경계 주)을 찾아서 원래 앱도 고쳤습니다.
 
 ## 설계에서 고민한 점
@@ -97,7 +97,10 @@ python -m venv .venv
 cd frontend
 npm install
 npm run dev        # http://localhost:3000  (FastAPI가 8000번에서 돌고 있어야 함)
+npm run e2e        # 브라우저 E2E (기본 대상: 공개 데모, PC의 Chrome 사용)
 ```
+
+- **E2E:** 대상은 `E2E_BASE_URL`로 바꿀 수 있습니다. 질문하기 테스트는 실제 AI를 한 번 부르므로(데모 하루 20회 중 1회) `E2E_SKIP_ASK=1`로 건너뛸 수 있습니다.
 
 - **자연어 질의:** `.env`에 `ANTHROPIC_API_KEY`가 필요합니다. 정답 SQL 확인은 `python -m app.qa.evaluate --gold`로 하고, 에이전트 채점은 `--run`으로 합니다. `--run`은 API 비용이 들고 결과는 `data/eval_runs/`에 저장됩니다.
 - **로컬 데모 데이터:** DB 이름이 `_demo`로 끝나는 DB에서만 `python -m app.demo.seed`가 돕니다.
