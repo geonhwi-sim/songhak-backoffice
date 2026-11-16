@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { expect, test, type Page } from "@playwright/test";
 
 // 공개 데모(가상 데이터)에서 면접관이 실제로 밟는 흐름을 그대로 확인한다.
@@ -62,8 +64,8 @@ test("정산서를 PDF로 내려받는다", async ({ page }) => {
   await page.locator("button[aria-pressed]").first().click();
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "PDF" }).click()]);
   expect(download.suggestedFilename()).toMatch(/^\d{4}-\d{2} .+ 정산서\.pdf$/);
-  const head = await (await download.createReadStream()).read(5);
-  expect(String(head)).toBe("%PDF-");
+  const file = await readFile(await download.path());
+  expect(file.subarray(0, 5).toString()).toBe("%PDF-");
 });
 
 test("인건비 화면에 기본급·주휴수당과 규칙 설명이 보인다", async ({ page }) => {
