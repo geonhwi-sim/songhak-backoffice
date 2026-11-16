@@ -9,7 +9,15 @@
 
 - 설정 파일: [docker-compose.prod.yml](../docker-compose.prod.yml), [deploy/nginx/templates/default.conf.template](../deploy/nginx/templates/default.conf.template)
 - 바깥에 열리는 포트는 nginx의 80·443뿐이다. DB·API는 compose 내부 네트워크에서만 접속할 수 있다.
-- api 컨테이너는 켤 때마다 `alembic upgrade head`와 질의용 읽기 전용 계정 설정을 실행한다. 둘 다 여러 번 실행해도 안전하다.
+- DB 계정은 셋으로 나눈다.
+
+  | 계정 | 누가 | 할 수 있는 것 |
+  |---|---|---|
+  | 관리 계정 (`POSTGRES_USER`, 테이블 주인) | `migrate` 컨테이너, 데모 seed | 마이그레이션, 계정 맞추기, TRUNCATE |
+  | 앱 계정 `songhak_app` | `api` (화면 API, 매일 동기화) | public 테이블 데이터 읽기·쓰기만. 테이블 만들기·바꾸기·지우기, TRUNCATE, 계정 만들기, 마이그레이션 기록 수정은 막힘 |
+  | 질의 계정 `qa_agent` | AI가 쓴 SQL | qa 뷰 읽기만, 읽기 전용 트랜잭션, 5초 제한 |
+
+- `migrate` 컨테이너가 켤 때 한 번 `alembic upgrade head` → 질의 계정 → 앱 계정 맞추기를 하고 끝난다(여러 번 돌려도 안전). `api`는 그게 성공해야 켜진다. 그래서 관리 계정 비밀번호는 `api` 컨테이너에 들어가지 않는다.
 - 로그인 쿠키는 `Secure`(HTTPS 전용)로 고정된다. 그래서 HTTPS 없이는 로그인이 되지 않는다.
 - 데모는 DB·DB 비밀번호·로그인 서명 키(`DEMO_AUTH_SECRET`)가 모두 운영과 따로다. 서명 키가 같으면 데모에서 받은 쿠키로 운영에 들어갈 수 있으므로 반드시 다른 값을 쓴다.
 - 데모 보호: 하루 질문 20회(모든 방문자 합계, `DEMO_ASK_DAILY_LIMIT`), IP당 API 초당 5회(nginx).
@@ -55,9 +63,10 @@ cp .env.example .env && nano .env
 |---|---|
 | `POSTGRES_PASSWORD` | 무작위 문자열 |
 | `QA_DB_PASSWORD` | 무작위 문자열 (질의용 읽기 전용 계정) |
+| `APP_DB_PASSWORD` | 무작위 문자열 (앱 계정 `songhak_app`: 데이터 읽기·쓰기만) |
 | `AUTH_SECRET` | 무작위 문자열 48자 이상 |
 | `ANTHROPIC_API_KEY` | Claude API 키 (자연어 질의) |
-| `DEMO_POSTGRES_PASSWORD`, `DEMO_QA_DB_PASSWORD`, `DEMO_AUTH_SECRET` | 데모용. 위 값과 **다른** 무작위 문자열 |
+| `DEMO_POSTGRES_PASSWORD`, `DEMO_QA_DB_PASSWORD`, `DEMO_APP_DB_PASSWORD`, `DEMO_AUTH_SECRET` | 데모용. 위 값과 **다른** 무작위 문자열 |
 | `DOMAIN` | 무료 주소 `<IP의 점을 -로>.sslip.io` (예: IP 3.38.1.2 → `3-38-1-2.sslip.io`). 도메인을 사면 이 값만 바꾸고 인증서를 새로 받는다 |
 | `CERTBOT_EMAIL` | 선택. Let's Encrypt 계정 이메일 (2025년부터 만료 알림 메일은 오지 않음) |
 
@@ -172,7 +181,7 @@ sh deploy/restore-check.sh   # 백업이 복원되는지 확인
 
 ## 아직 하지 않은 것
 
-- 앱 DB 계정 분리: 지금은 앱이 superuser로 접속한다 (마이그레이션 계정과 앱 계정을 나눌 예정)
+- 로컬 개발은 아직 관리 계정 하나로 접속한다 (운영만 나눔)
 
 ## 로컬에서 미리 확인한 것 (2026-11-09)
 

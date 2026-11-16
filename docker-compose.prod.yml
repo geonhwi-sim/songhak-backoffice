@@ -24,15 +24,32 @@ services:
       timeout: 3s
       retries: 10
 
-  api:
+  # DB 계정은 셋이다.
+  #   관리 계정(POSTGRES_USER, 테이블 주인): 마이그레이션과 계정 맞추기에만. migrate 컨테이너에만 있다.
+  #   앱 계정(songhak_app): API와 매일 동기화. 데이터 읽기·쓰기만 (app/app_user.py)
+  #   질의 계정(qa_agent): AI가 쓴 SQL. qa 뷰 읽기만 (app/qa/create_user.py)
+  # 켤 때 한 번 돌고 끝난다: 마이그레이션 → 질의 계정 → 앱 계정 맞추기 (여러 번 돌려도 안전)
+  migrate:
     build: ./backend
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-songhak}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-songhak}
       QA_DATABASE_URL: postgresql+psycopg://qa_agent:${QA_DB_PASSWORD:?.env에 QA_DB_PASSWORD를 설정하세요}@db:5432/${POSTGRES_DB:-songhak}
+      APP_DATABASE_URL: postgresql+psycopg://songhak_app:${APP_DB_PASSWORD:?.env에 APP_DB_PASSWORD를 설정하세요}@db:5432/${POSTGRES_DB:-songhak}
+    command: ["sh", "-c", "alembic upgrade head && python -m app.qa.create_user && python -m app.app_user"]
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+psycopg://songhak_app:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-songhak}
+      QA_DATABASE_URL: postgresql+psycopg://qa_agent:${QA_DB_PASSWORD}@db:5432/${POSTGRES_DB:-songhak}
       AUTH_SECRET: ${AUTH_SECRET:?.env에 AUTH_SECRET을 설정하세요}
       COOKIE_SECURE: "1"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -77,15 +94,28 @@ services:
       timeout: 3s
       retries: 10
 
-  api-demo:
+  # 데모도 같은 구조. 데모 데이터 만들기(app.demo.seed)는 TRUNCATE를 쓰므로 여기서 관리 계정으로 돌린다 (deploy/daily.sh)
+  migrate-demo:
     build: ./backend
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       db-demo:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://songhak:${DEMO_POSTGRES_PASSWORD}@db-demo:5432/songhak_demo
       QA_DATABASE_URL: postgresql+psycopg://qa_agent:${DEMO_QA_DB_PASSWORD:?.env에 DEMO_QA_DB_PASSWORD를 설정하세요}@db-demo:5432/songhak_demo
+      APP_DATABASE_URL: postgresql+psycopg://songhak_app:${DEMO_APP_DB_PASSWORD:?.env에 DEMO_APP_DB_PASSWORD를 설정하세요}@db-demo:5432/songhak_demo
+    command: ["sh", "-c", "alembic upgrade head && python -m app.qa.create_user && python -m app.app_user"]
+
+  api-demo:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      migrate-demo:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+psycopg://songhak_app:${DEMO_APP_DB_PASSWORD}@db-demo:5432/songhak_demo
+      QA_DATABASE_URL: postgresql+psycopg://qa_agent:${DEMO_QA_DB_PASSWORD}@db-demo:5432/songhak_demo
       AUTH_SECRET: ${DEMO_AUTH_SECRET:?.env에 DEMO_AUTH_SECRET을 설정하세요 (AUTH_SECRET과 다른 값)}
       COOKIE_SECURE: "1"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

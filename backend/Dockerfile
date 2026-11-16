@@ -22,5 +22,5 @@ USER app
 
 EXPOSE 8000
 
-# 켤 때마다: 마이그레이션 → 질의용 읽기 전용 계정 맞추기 → 서버 실행 (둘 다 여러 번 돌려도 안전)
-CMD ["sh", "-c", "alembic upgrade head && python -m app.qa.create_user && exec uvicorn app.api:app --host 0.0.0.0 --port 8000"]
+# 서버만 실행한다. 마이그레이션과 계정 맞추기는 관리 계정을 가진 migrate 서비스가 먼저 한다 (docker-compose.prod.yml)
+CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]

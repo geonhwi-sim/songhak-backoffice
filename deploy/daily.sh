@@ -11,6 +11,7 @@ sh deploy/backup.sh
 backup_status=$?
 $C exec -T api python -m app.etl.sync
 sync_status=$?
-$C exec -T api-demo python -m app.demo.seed
+# 데모 seed는 TRUNCATE를 써서 앱 계정으로는 안 된다. 관리 계정이 있는 migrate-demo로 한 번 돌린다
+$C run --rm -T migrate-demo python -m app.demo.seed
 demo_status=$?
 [ "$backup_status" -eq 0 ] && [ "$sync_status" -eq 0 ] && [ "$demo_status" -eq 0 ]
