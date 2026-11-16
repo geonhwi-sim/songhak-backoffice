@@ -8,14 +8,9 @@ import { Empty, ErrorBox, Loading, PageHeader } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { fetcher, type Home, type SupplyOrder, type SyncRun } from "@/lib/api";
+import { fetcher, type Home, type SyncRun } from "@/lib/api";
 import { hours, kstTime, md, monthLabel, won } from "@/lib/format";
-
-const STATUS: Record<SupplyOrder["status"], { label: string; variant: "default" | "secondary" | "outline" }> = {
-  pending: { label: "대기", variant: "default" },
-  ordered: { label: "주문함", variant: "secondary" },
-  done: { label: "완료", variant: "outline" },
-};
+import { SUPPLY_STATUS as STATUS } from "@/lib/labels";
 
 export default function HomePage() {
   const { data, error, isLoading, mutate } = useSWR<Home>("/api/home", fetcher);
@@ -96,7 +91,12 @@ export default function HomePage() {
         <Card>
           <CardHeader>
             <CardTitle>최근 발주</CardTitle>
-            <CardDescription>대기 중인 발주가 먼저 나옵니다</CardDescription>
+            <CardDescription>
+              대기 중인 발주가 먼저 나옵니다 ·{" "}
+              <Link href="/supply" className="font-medium text-primary underline-offset-4 hover:underline">
+                발주 전체 보기
+              </Link>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {supply.orders.length === 0 ? (
@@ -163,6 +163,9 @@ function SyncNotice({ today, runs }: { today: string; runs: Home["last_sync"] })
         </span>
       ))}
       {warn && <span className="font-medium">숫자가 최신이 아닐 수 있습니다</span>}
+      <Link href="/sync" className="ml-auto underline-offset-4 hover:underline">
+        동기화 기록
+      </Link>
     </div>
   );
 }

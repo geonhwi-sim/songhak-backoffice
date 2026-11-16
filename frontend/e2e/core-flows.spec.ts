@@ -112,6 +112,32 @@ test("질문하면 답·결과 표·실행한 SQL이 나온다", async ({ page }
   await expect(page.locator("pre").first()).toContainText(/select/i);
 });
 
+test("발주: 비용 합계가 목록 합과 같고, 누르면 품목이 펼쳐진다", async ({ page }) => {
+  await demoLogin(page);
+  await page.getByRole("link", { name: "발주", exact: true }).first().click();
+  await expect(page.getByText("발주 목록")).toBeVisible();
+  // 지난달은 대기 중인 발주가 거의 없어 결제 금액까지 확인할 수 있다
+  await page.getByRole("button", { name: "이전 달" }).click();
+  const rows = page.locator("li button[aria-expanded]");
+  await expect(rows.first()).toBeVisible();
+
+  const costs = await rows.locator("span.font-medium").allInnerTexts();
+  const total = toNumber(await page.locator("[data-slot=card]").filter({ hasText: "비용" }).first().locator("[data-slot=card-title]").innerText());
+  expect(costs.reduce((s, t) => s + toNumber(t), 0)).toBe(total);
+
+  await rows.first().click();
+  await expect(rows.first()).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("예상 금액")).toBeVisible();
+  await expect(page.getByText("품목별 지출 상위 10")).toBeVisible();
+});
+
+test("동기화: 원본 앱별 마지막 성공과 기록이 보인다", async ({ page }) => {
+  await demoLogin(page);
+  await page.getByRole("link", { name: "동기화", exact: true }).first().click();
+  await expect(page.getByText(/마지막 성공|성공한 기록 없음/)).toHaveCount(2);
+  await expect(page.getByText("최근 기록")).toBeVisible();
+});
+
 test("직원 계정은 내 근무만 보고, 사장님 화면 주소로 가도 돌아온다 @mobile", async ({ page }) => {
   await page.goto("/login");
   await page.getByRole("button", { name: "직원 화면으로 보기" }).click();

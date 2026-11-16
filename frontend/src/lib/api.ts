@@ -127,8 +127,11 @@ export type SyncRun = {
   status: string;
   started_at: string;
   finished_at: string | null;
+  stats?: Record<string, number> | null;
   error: string | null;
 };
+
+export type SupplyOrders = { orders: SupplyOrder[]; count: number; cost: number };
 
 export type Home = {
   today: string;

@@ -15,7 +15,9 @@ const OWNER_NAV = [
   { href: "/", label: "홈" },
   { href: "/settlements", label: "정산" },
   { href: "/payroll", label: "인건비" },
+  { href: "/supply", label: "발주" },
   { href: "/ask", label: "질문하기" },
+  { href: "/sync", label: "동기화" },
 ];
 const STAFF_NAV = [{ href: "/my", label: "내 근무" }];
 const STAFF_HOME = "/my";

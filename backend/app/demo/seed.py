@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import insert, select, text
+from sqlalchemy import func, insert, select, text
 from sqlalchemy.orm import Session
 
 from app import models as m
@@ -314,10 +314,18 @@ def seed(s: Session, until: date) -> dict:
     # ── 기타 ──
     s.add_all(m.DayMemo(memo_date=d, body=b) for d, b in MEMOS.items() if d <= until)
     done_at = at(until, 5)
-    stats = {"demo": True, "orders": orders, "work_logs": logs, "supply_orders": supply_orders}
+    s.flush()
+    count = lambda model: s.scalar(select(func.count()).select_from(model))  # noqa: E731
+    # 원본마다 실제 동기화(app/etl)와 같은 이름의 숫자를 남긴다 (동기화 화면이 이 이름으로 보여 준다)
+    stats = {
+        "rtdb": {"demo": True, "orders": orders, "items": count(m.SalesOrderItem), "work_logs": logs,
+                 "items_needs_review": 0},
+        "firestore": {"demo": True, "orders": supply_orders, "order_items": count(m.SupplyOrderItem),
+                      "payments": paid, "order_items_unmatched": 0},
+    }
     s.execute(insert(m.SyncRun), [
         {"source": src, "started_at": done_at, "finished_at": done_at + timedelta(seconds=3),
-         "status": "succeeded", "stats": stats, "error": None} for src in ("rtdb", "firestore")])
+         "status": "succeeded", "stats": stats[src], "error": None} for src in ("rtdb", "firestore")])
     # 데모 계정: 비밀번호 없음(비밀번호 로그인 불가), 데모 서버의 /api/auth/demo로만 들어간다
     s.add(m.AppUser(email=DEMO_EMAIL, role="owner", password_hash=None))
     s.add(m.AppUser(email=DEMO_STAFF_EMAIL, role="staff", employee_id=staff_ids[0], password_hash=None))
