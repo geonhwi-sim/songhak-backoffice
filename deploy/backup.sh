@@ -19,3 +19,14 @@ chmod 600 "$out"
 echo "backup: $out ($(du -h "$out" | cut -f1))"
 
 find "$DIR" -name 'songhak-*.dump' -mtime +"$KEEP_DAYS" -print -delete
+
+# 서버 밖 보관: .env에 BACKUP_S3_URI(예: s3://버킷/db)가 있으면 S3에도 올린다.
+# 키 파일 없이 EC2 역할(올리기만 허용)로 인증하고, 30일이 지나면 S3 수명 주기 규칙이 지운다.
+# AWS CLI는 설치하지 않고 공식 이미지로 실행한다 (--network host: 인스턴스 메타데이터에 닿게).
+S3_URI="${BACKUP_S3_URI:-$(sed -n 's/^BACKUP_S3_URI=//p' .env 2>/dev/null | tail -1)}"
+if [ -n "$S3_URI" ]; then
+  key="songhak-$(date -u +%Y-%m-%dT%H%M%SZ).dump"
+  docker run --rm --network host -v "$DIR:/backups:ro" -e AWS_REGION="${AWS_REGION:-ap-northeast-2}" \
+    amazon/aws-cli:2.39.3 s3 cp --only-show-errors "/backups/$(basename "$out")" "$S3_URI/$key"
+  echo "s3: $S3_URI/$key"
+fi
