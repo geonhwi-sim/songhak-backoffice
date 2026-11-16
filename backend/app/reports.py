@@ -12,7 +12,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import models as m
-from app.payroll import calc_period_wage, load_employee, pay_period
+from app.payroll import calc_period_wage, load_employee, pay_period, rate_at, won
 
 KST = timezone(timedelta(hours=9))
 
@@ -105,6 +105,29 @@ def payroll(session: Session, month: str) -> dict:
                           "total": w.total})
     return {"month": month, "start": start, "end": end, "employees": employees,
             "total": sum(x["total"] for x in employees)}
+
+
+def my_pay(session: Session, employee_id: int, month: str, today: date | None = None) -> dict | None:
+    """직원 본인 화면: 한 급여 기간의 근무 기록과 (예상) 급여. 사장님 화면과 같은 계산(calc_period_wage)을 쓴다."""
+    emp = session.get(m.Employee, employee_id)
+    if emp is None:
+        return None
+    today = today or today_kst()
+    start, end = pay_period(month)
+    logs, rates = load_employee(session, employee_id)
+    w = calc_period_wage(logs, rates, month)
+    in_period = sorted((lg for lg in logs if start <= lg.work_date <= end), key=lambda lg: (lg.work_date, lg.start))
+    rows = []
+    for lg in in_period:
+        rate = rate_at(rates, lg.work_date)
+        rows.append({"date": lg.work_date, "start": lg.start.strftime("%H:%M"), "end": lg.end.strftime("%H:%M"),
+                     "break_min": lg.break_min, "hours": float(lg.hours), "hourly_rate": rate,
+                     "pay": won(lg.hours * rate)})
+    return {"name": emp.name, "month": month, "start": start, "end": end,
+            # 기간이 끝나지 않았으면 앞으로의 근무와 주휴수당이 더해질 수 있다
+            "is_estimate": today <= end,
+            "days": w.days, "hours": float(w.hours), "base_pay": w.base_pay, "juhu_weeks": w.juhu_weeks,
+            "juhu_pay": w.juhu_pay, "total": w.total, "logs": rows}
 
 
 # ── 발주 ──

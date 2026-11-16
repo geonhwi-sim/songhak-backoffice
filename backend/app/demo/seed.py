@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app import models as m
 from app.db import Base, SessionLocal
-from app.demo import DEMO_EMAIL
+from app.demo import DEMO_EMAIL, DEMO_STAFF_EMAIL
 from app.etl.rtdb import disc
 from app.payroll import refresh_periods
 
@@ -233,11 +233,13 @@ def seed(s: Session, until: date) -> dict:
 
     # ── 인건비 ──
     logs = 0
+    staff_ids = []
     for st in STAFF:
         rng = random.Random(f"{SEED}-staff-{st.name}")
         emp = m.Employee(name=st.name)
         s.add(emp)
         s.flush()
+        staff_ids.append(emp.id)
         s.add_all(m.EmployeeWageRate(employee_id=emp.id, hourly_rate=r, valid_from=a, valid_to=b)
                   for r, a, b in st.rates)
         extra_week: dict[tuple[int, int], int] = {}
@@ -318,6 +320,7 @@ def seed(s: Session, until: date) -> dict:
          "status": "succeeded", "stats": stats, "error": None} for src in ("rtdb", "firestore")])
     # 데모 계정: 비밀번호 없음(비밀번호 로그인 불가), 데모 서버의 /api/auth/demo로만 들어간다
     s.add(m.AppUser(email=DEMO_EMAIL, role="owner", password_hash=None))
+    s.add(m.AppUser(email=DEMO_STAFF_EMAIL, role="staff", employee_id=staff_ids[0], password_hash=None))
     s.flush()
 
     return {"until": until.isoformat(), "sales_orders": orders, "deleted_orders": deleted, "work_logs": logs,

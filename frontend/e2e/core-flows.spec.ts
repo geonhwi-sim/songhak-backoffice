@@ -112,6 +112,24 @@ test("질문하면 답·결과 표·실행한 SQL이 나온다", async ({ page }
   await expect(page.locator("pre").first()).toContainText(/select/i);
 });
 
+test("직원 계정은 내 근무만 보고, 사장님 화면 주소로 가도 돌아온다 @mobile", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("button", { name: "직원 화면으로 보기" }).click();
+  await page.waitForURL(/\/my$/);
+  await expect(page.getByRole("heading", { name: /님의 근무$/ })).toBeVisible();
+  await expect(page.getByLabel("급여 합계")).toContainText("원");
+  await expect(page.getByText(/근무 기록 \d+일/)).toBeVisible();
+
+  const nav = page.getByRole("navigation");
+  await expect(nav.getByRole("link")).toHaveText(["내 근무"]);
+
+  await page.goto("/settlements");
+  await page.waitForURL(/\/my$/);
+  // 화면 우회와 상관없이 API가 막는다
+  expect((await page.request.get("/api/settlements?month=2026-10")).status()).toBe(403);
+  expect((await page.request.get("/api/payroll?month=2026-11")).status()).toBe(403);
+});
+
 test("로그아웃하면 다시 로그인 화면으로 간다", async ({ page }) => {
   await demoLogin(page);
   await page.getByRole("button", { name: "로그아웃" }).click();

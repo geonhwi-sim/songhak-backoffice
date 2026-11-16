@@ -332,7 +332,12 @@ class SyncRun(Base):
 
 class AppUser(Base):
     __tablename__ = "app_users"
-    __table_args__ = (CheckConstraint("role IN ('owner', 'staff')", name="role"),)
+    __table_args__ = (
+        CheckConstraint("role IN ('owner', 'staff')", name="role"),
+        # 직원 계정은 반드시 직원 한 명과 연결된다 (본인 근무 기록만 보려면 누구인지 알아야 한다)
+        CheckConstraint("role = 'owner' OR employee_id IS NOT NULL", name="staff_has_employee"),
+        UniqueConstraint("employee_id"),  # 직원 한 명에 계정 하나
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(Text, unique=True)
     role: Mapped[str] = mapped_column(String(10))

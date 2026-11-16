@@ -42,9 +42,12 @@ def env(monkeypatch):
     with engine.connect() as conn:
         tx = conn.begin()
         s = Session(bind=conn, join_transaction_mode="create_savepoint")
+        emp = m.Employee(name="테스트 직원")  # 직원 계정은 직원과 연결돼야 한다 (DB 제약)
+        s.add(emp)
+        s.flush()
         s.add_all([
             m.AppUser(email="owner@test.local", role="owner", password_hash=hash_password(PW)),
-            m.AppUser(email="staff@test.local", role="staff", password_hash=hash_password(PW)),
+            m.AppUser(email="staff@test.local", role="staff", employee_id=emp.id, password_hash=hash_password(PW)),
             m.AppUser(email="gone@test.local", role="owner", password_hash=hash_password(PW), is_active=False),
         ])
         s.flush()

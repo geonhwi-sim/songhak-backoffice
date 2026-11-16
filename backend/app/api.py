@@ -23,7 +23,7 @@ from sqlalchemy import select, text
 
 from app import models as m
 from app import reports
-from app.demo import DEMO_EMAIL, demo_mode
+from app.demo import DEMO_EMAIL, DEMO_STAFF_EMAIL, demo_mode
 from app.auth import COOKIE, Owner, User, authenticate, cookie_options, make_token
 from app.deps import DB, get_session  # noqa: F401  테스트가 app.api.get_session을 바꿔 끼운다
 
@@ -90,11 +90,12 @@ def login(body: LoginBody, s: DB, response: Response) -> dict:
     return user_out(user)
 
 
-@app.post("/api/auth/demo", summary="데모 서버에서만: 비밀번호 없이 데모 계정으로 로그인")
-def demo_login(s: DB, response: Response) -> dict:
+@app.post("/api/auth/demo", summary="데모 서버에서만: 비밀번호 없이 데모 계정(사장님 또는 직원)으로 로그인")
+def demo_login(s: DB, response: Response, role: Literal["owner", "staff"] = "owner") -> dict:
     if not demo_mode():
         raise HTTPException(404, "Not Found")
-    user = s.scalar(select(m.AppUser).where(m.AppUser.email == DEMO_EMAIL, m.AppUser.is_active))
+    email = DEMO_STAFF_EMAIL if role == "staff" else DEMO_EMAIL
+    user = s.scalar(select(m.AppUser).where(m.AppUser.email == email, m.AppUser.is_active))
     if user is None:
         raise HTTPException(503, "데모 데이터가 아직 준비되지 않았습니다")
     response.set_cookie(COOKIE, make_token(user), **cookie_options())
@@ -111,6 +112,20 @@ def logout(response: Response) -> dict:
 @app.get("/api/auth/me", summary="지금 로그인한 계정")
 def me(user: User) -> dict:
     return user_out(user)
+
+
+# ── 직원 본인 ──
+
+
+@app.get("/api/me/pay", summary="직원 본인: 급여 기간의 근무 기록과 (예상) 급여")
+def my_pay(s: DB, user: User, month: Month | None = None) -> dict:
+    # 누구의 기록인지는 로그인 토큰으로만 정한다. 직원 ID를 받는 칸이 없어서 다른 사람 것을 물을 방법이 없다
+    if user.employee_id is None:
+        raise HTTPException(404, "직원과 연결된 계정이 아닙니다")
+    pay = reports.my_pay(s, user.employee_id, month or reports.current_pay_month(reports.today_kst()))
+    if pay is None:
+        raise HTTPException(404, "직원 정보를 찾을 수 없습니다")
+    return pay
 
 
 # ── 조회 (사장님) ──

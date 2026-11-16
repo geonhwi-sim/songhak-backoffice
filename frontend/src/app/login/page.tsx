@@ -53,12 +53,18 @@ export default function LoginPage() {
               <Button size="lg" disabled={pending} onClick={() => signIn("/api/auth/demo")}>
                 {pending ? "들어가는 중…" : "데모로 둘러보기"}
               </Button>
+              {/* 같은 백오피스를 직원 계정으로: 본인 근무 기록과 예상 급여만 보인다 */}
+              <Button size="lg" variant="outline" disabled={pending} onClick={() => signIn("/api/auth/demo?role=staff")}>
+                직원 화면으로 보기
+              </Button>
               {error && (
                 <p role="alert" className="text-sm text-destructive">
                   {error}
                 </p>
               )}
-              <p className="text-xs text-muted-foreground">비밀번호 없이 들어갑니다. 실제 가게 데이터는 없습니다.</p>
+              <p className="text-xs text-muted-foreground">
+                비밀번호 없이 들어갑니다. 실제 가게 데이터는 없습니다. 직원 화면은 직원 한 명의 근무 기록과 예상 급여만 보여 줍니다.
+              </p>
             </div>
           )}
           {!DEMO_MODE && (

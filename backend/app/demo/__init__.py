@@ -3,6 +3,7 @@
 import os
 
 DEMO_EMAIL = "demo@example.com"
+DEMO_STAFF_EMAIL = "demo-staff@example.com"  # 데모 직원(첫 번째 직원)과 연결된 직원 계정
 
 
 def demo_mode() -> bool:

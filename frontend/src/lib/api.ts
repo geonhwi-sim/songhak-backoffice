@@ -81,6 +81,31 @@ export type EmployeeWage = {
 
 export type Payroll = { month: string; start: string; end: string; employees: EmployeeWage[]; total: number };
 
+// 직원 본인 화면 (/api/me/pay)
+export type WorkLogRow = {
+  date: string;
+  start: string;
+  end: string;
+  break_min: number;
+  hours: number;
+  hourly_rate: number;
+  pay: number;
+};
+export type MyPay = {
+  name: string;
+  month: string;
+  start: string;
+  end: string;
+  is_estimate: boolean;
+  days: number;
+  hours: number;
+  base_pay: number;
+  juhu_weeks: number;
+  juhu_pay: number;
+  total: number;
+  logs: WorkLogRow[];
+};
+
 export type SupplyOrder = {
   id: number;
   created_at: string;
