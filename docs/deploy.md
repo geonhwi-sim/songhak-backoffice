@@ -127,18 +127,43 @@ nginx는 켜질 때 한 번만 `web`, `web-demo` 같은 컨테이너 이름을 �
 
 빌드 캐시는 다음 빌드를 빠르게 하려고 남기는 중간 파일이라 지워도 서비스와 데이터에는 영향이 없다. 지우면 다음 빌드만 처음처럼 몇 분 더 걸린다. 정리하지 않으면 업데이트할 때마다 몇 GB씩 쌓여 디스크가 차고, 디스크가 차면 DB 쓰기와 동기화가 멈춘다.
 
+## 6. 백업과 복원
+
+- **매일 백업:** `deploy/daily.sh`가 05:00 동기화 **직전에** `deploy/backup.sh`를 부른다. 운영 DB를 `pg_dump` 사용자 지정 형식(압축)으로 `~/backups/songhak-YYYY-MM-DD.dump`에 저장하고 14일치만 남긴다. 폴더는 700, 파일은 600 권한.
+- **데모 DB는 백업하지 않는다.** 가상 데이터라 `app.demo.seed`로 언제든 다시 만든다.
+- **복원 확인:** `sh deploy/restore-check.sh`는 지금 DB를 백업해 임시 DB(`restore_check`)에 복원한다. 그다음 운영 DB와 모든 테이블의 행 수, 월별 정산 합계, 월별 인건비 합계를 비교하고 임시 DB를 지운다. 하나라도 다르면 차이를 보여 주고 실패(종료 코드 1)한다. 05:00 동기화와 겹치지 않는 시간에, 한 달에 한 번 실행한다.
+
+실제로 운영 DB를 백업으로 되돌릴 때 (데이터를 덮어쓰므로 먼저 지금 상태를 백업해 둔다):
+
+```bash
+P="docker compose -f docker-compose.prod.yml"
+sh deploy/backup.sh                                      # 되돌리기 전 상태도 남긴다 (같은 날이면 덮어쓰므로 파일 이름을 바꿔 둘 것)
+$P stop api                                              # 쓰는 쪽을 멈춘다
+$P exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --exit-on-error' < ~/backups/songhak-2026-11-16.dump
+$P start api
+```
+
+백업이 없어도 원본 앱(Firebase)에서 다시 가져올 수 있는 데이터가 대부분이다. 백업에만 있는 것은 로그인 계정, 동기화 기록, 원본 앱에서 이미 지워진 기록(발주 앱은 7일이 지나면 지운다)이다.
+
+한계: 백업이 같은 서버 디스크에 있어서 서버(EBS)를 통째로 잃으면 백업도 함께 잃는다. 그때는 원본 앱에서 다시 가져오고, 발주 앱에서 지워진 오래된 기록은 잃는다. 필요하면 PC로 내려받아 둔다.
+
+```bash
+scp -i ~/.ssh/songhak-backoffice.pem "ubuntu@43.202.96.199:backups/songhak-*.dump" ./backups/
+```
+
 ## 자주 쓰는 명령
 
 ```bash
 P="docker compose -f docker-compose.prod.yml"
 $P logs -f api            # 로그 (web, nginx, db, certbot도 같은 방식)
 $P exec db psql -U songhak songhak
-$P exec db pg_dump -U songhak songhak | gzip > ~/backup-$(date +%F).sql.gz   # 백업
+sh deploy/backup.sh       # 지금 바로 백업
+sh deploy/restore-check.sh   # 백업이 복원되는지 확인
 ```
 
 ## 아직 하지 않은 것
 
-- 자동 백업
+- 서버 밖 백업 보관 (S3 등): 지금은 같은 서버에만 있다 (위 "한계")
 - 앱 DB 계정 분리: 지금은 앱이 superuser로 접속한다 (마이그레이션 계정과 앱 계정을 나눌 예정)
 
 ## 로컬에서 미리 확인한 것 (2026-11-09)
