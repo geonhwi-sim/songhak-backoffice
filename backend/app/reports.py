@@ -3,6 +3,7 @@
 - 정산 기간: 달력 기준 1일 ~ 말일. 원본에서 지워진 주문은 뺀다.
 - 급여 기간: 전월 17일 ~ 당월 16일 (app/payroll.py)
 - 발주 비용: 결제 금액이 있으면 그 값, 없으면 단가표 기준 예상 금액
+- 지출: 백오피스에서 직접 입력한 돈 (매장·도매상 장보기, 공과금). 손익 = 매출 − (지출 + 발주 + 인건비)
 - 날짜는 한국 시간 기준
 """
 
@@ -163,6 +164,56 @@ def supply_orders(session: Session, start: date | None = None, end: date | None 
                        "unit_price": it.unit_price, "subtotal": it.subtotal} for it in x.items],
         })
     return {"orders": rows, "count": len(rows), "cost": sum(r["cost"] for r in rows)}
+
+
+# ── 지출 · 손익 ──
+
+
+def expenses(session: Session, month: str) -> dict:
+    """한 달(달력 기준)의 지출. 지운 건은 뺀다."""
+    start, end = month_range(month)
+    e = m.Expense
+    rows = session.scalars(
+        select(e).where(e.spent_on.between(start, end), e.deleted_at.is_(None)).order_by(e.spent_on.desc(), e.id.desc())
+    ).all()
+    by_category = {c: 0 for c in m.EXPENSE_CATEGORIES}
+    for x in rows:
+        by_category[x.category] += x.amount
+    return {
+        "month": month, "start": start, "end": end,
+        "expenses": [{"id": x.id, "spent_on": x.spent_on, "vendor": x.vendor, "category": x.category,
+                      "amount": x.amount, "memo": x.memo, "source": x.source} for x in rows],
+        "by_category": by_category, "total": sum(by_category.values()),
+    }
+
+
+def profit(session: Session, month: str) -> dict:
+    """월 손익 요약 (달력 기준 한 달).
+
+    - 매출: 외상 정산(정산처 식대). 홀 매출(POS)은 아직 연결 전이라 None.
+    - 비용: 직접 입력한 지출 + 발주 앱 비용 + 인건비.
+      인건비는 그 달 16일에 끝나는 급여 기간(전월 17일 ~ 당월 16일)의 금액이다. 그 달에 나가는 돈이라서다.
+    - 발주 앱에 결제를 남긴 건을 지출에도 넣으면 두 번 세어진다 (화면에서 안내한다).
+    """
+    credit = settlements(session, month)["total"]
+    exp = expenses(session, month)
+    start, end = month_range(month)
+    supply = supply_orders(session, start, end)["cost"]
+    labor = payroll(session, month)
+    pay_start, pay_end = pay_period(month)
+
+    revenue = {"credit": credit, "pos": None}
+    costs = {**exp["by_category"], "supply_app": supply, "labor": labor["total"]}
+    revenue_total = sum(v for v in revenue.values() if v is not None)
+    cost_total = sum(costs.values())
+    return {
+        "month": month, "start": start, "end": end, "pay_start": pay_start, "pay_end": pay_end,
+        "revenue": revenue, "revenue_total": revenue_total,
+        "costs": costs, "cost_total": cost_total,
+        "profit": revenue_total - cost_total,
+        "expense_count": len(exp["expenses"]),
+        "pos_connected": False,
+    }
 
 
 # ── 운영 ──

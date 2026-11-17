@@ -131,6 +131,49 @@ test("발주: 비용 합계가 목록 합과 같고, 누르면 품목이 펼쳐�
   await expect(page.getByText("품목별 지출 상위 10")).toBeVisible();
 });
 
+test("손익: 지출을 넣으면 비용과 손익에 반영되고, 지우면 돌아온다", async ({ page }) => {
+  await demoLogin(page);
+  await page.getByRole("link", { name: "손익", exact: true }).first().click();
+  const card = (title: string) =>
+    page.locator("[data-slot=card]").filter({ has: page.locator("[data-slot=card-description]", { hasText: new RegExp(`^${title}$`) }) }).locator("[data-slot=card-title]");
+  await expect(page.getByTestId("profit-value")).toBeVisible();
+  const read = async () => ({
+    revenue: toNumber(await card("매출").innerText()),
+    cost: toNumber(await card("비용").innerText()),
+    profit: toNumber(await card("손익").innerText()),
+  });
+  const before = await read();
+  expect(before.profit).toBe(before.revenue - before.cost);
+
+  // 공개 데모를 함께 쓰므로 이름을 겹치지 않게 하고, 끝나면 지운다 (데모 DB는 매일 새로 만든다)
+  const vendor = `E2E 확인 ${Date.now()}`;
+  const form = page.getByRole("form", { name: "지출 입력" });
+  await form.getByLabel("산 곳").fill(vendor);
+  await form.getByLabel("분류").selectOption({ label: "기타" });
+  await form.getByLabel("금액 (원)").fill("12,345");
+  await form.getByRole("button", { name: "추가" }).click();
+
+  const list = page.getByRole("list", { name: "지출 목록" });
+  await expect(list.getByText(vendor)).toBeVisible();
+  await expect(card("비용")).toHaveText(`${(before.cost + 12345).toLocaleString("ko-KR")}원`);
+  await expect(card("손익")).toHaveText(`${(before.profit - 12345).toLocaleString("ko-KR")}원`);
+
+  page.once("dialog", (d) => d.accept());
+  await list.getByRole("button", { name: `${vendor} 지출 지우기` }).click();
+  await expect(list.getByText(vendor)).toHaveCount(0);
+  await expect(card("비용")).toHaveText(`${before.cost.toLocaleString("ko-KR")}원`);
+});
+
+test("손익: 잘못된 금액은 막고 이유를 보여 준다", async ({ page }) => {
+  await demoLogin(page);
+  await page.goto("/profit");
+  const form = page.getByRole("form", { name: "지출 입력" });
+  await form.getByLabel("산 곳").fill("E2E 금액 확인");
+  await form.getByLabel("금액 (원)").fill("0");
+  await form.getByRole("button", { name: "추가" }).click();
+  await expect(form.getByRole("alert")).toContainText("금액");
+});
+
 test("동기화: 원본 앱별 마지막 성공과 기록이 보인다", async ({ page }) => {
   await demoLogin(page);
   await page.getByRole("link", { name: "동기화", exact: true }).first().click();

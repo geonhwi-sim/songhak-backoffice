@@ -36,6 +36,8 @@ DOMAIN_NOTES = """\
   급여·인건비·주휴수당 질문은 payroll을 쓴다. 주휴수당을 직접 계산하지 않는다.
 - "근무한 날", "근무 시간"처럼 달력 날짜로 묻는 질문은 work_logs를 쓴다.
 - 발주 비용은 supply_orders.cost다. removed_from_app = true인 발주도 실제 발주이므로 빼지 않는다.
+- 가게가 매장·도매상에서 직접 사 온 돈과 공과금·임대료는 expenses다 (발주와 따로). "발주 비용"은 supply_orders만,
+  "지출"은 expenses만, "재료비"는 expenses의 food와 supply_orders.cost를 더한다.
 - 연도가 없으면 오늘 날짜 기준으로 가장 최근의 그 달로 본다."""
 
 

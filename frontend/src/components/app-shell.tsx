@@ -16,6 +16,7 @@ const OWNER_NAV = [
   { href: "/settlements", label: "정산" },
   { href: "/payroll", label: "인건비" },
   { href: "/supply", label: "발주" },
+  { href: "/profit", label: "손익" },
   { href: "/ask", label: "질문하기" },
   { href: "/sync", label: "동기화" },
 ];

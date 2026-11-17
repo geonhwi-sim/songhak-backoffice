@@ -158,3 +158,41 @@ export type AskQuota = { limit: number | null; remaining: number | null };
 
 // 데모 서버용 빌드에서만 "1" (Dockerfile 빌드 인자). 빌드할 때 코드에 박힌다.
 export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "1";
+
+// ── 지출 · 손익 (backend reports.expenses, reports.profit) ──
+
+export type ExpenseCategory = "food" | "supplies" | "utilities" | "rent" | "other";
+
+export type Expense = {
+  id: number;
+  spent_on: string;
+  vendor: string;
+  category: ExpenseCategory;
+  amount: number;
+  memo: string | null;
+  source: "manual" | "receipt";
+};
+
+export type Expenses = {
+  month: string;
+  start: string;
+  end: string;
+  expenses: Expense[];
+  by_category: Record<ExpenseCategory, number>;
+  total: number;
+};
+
+export type Profit = {
+  month: string;
+  start: string;
+  end: string;
+  pay_start: string;
+  pay_end: string;
+  revenue: { credit: number; pos: number | null };
+  revenue_total: number;
+  costs: Record<ExpenseCategory, number> & { supply_app: number; labor: number };
+  cost_total: number;
+  profit: number;
+  expense_count: number;
+  pos_connected: boolean;
+};

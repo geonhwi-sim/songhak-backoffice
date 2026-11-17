@@ -1,6 +1,6 @@
 // 여러 화면이 같이 쓰는 표시 이름
 
-import type { SupplyOrder, SyncRun } from "@/lib/api";
+import type { ExpenseCategory, SupplyOrder, SyncRun } from "@/lib/api";
 
 export const SUPPLY_STATUS: Record<SupplyOrder["status"], { label: string; variant: "default" | "secondary" | "outline" }> = {
   pending: { label: "대기", variant: "default" },
@@ -24,4 +24,13 @@ export const SYNC_STATS: Record<SyncRun["source"], [key: string, label: string][
     ["payments", "결제"],
     ["order_items_unmatched", "단가표에 없는 품목"],
   ],
+};
+
+// 지출 분류. 순서 = 입력 화면의 선택지 순서. 값은 backend models.EXPENSE_CATEGORIES
+export const EXPENSE_CATEGORY: Record<ExpenseCategory, string> = {
+  food: "식재료",
+  supplies: "소모품",
+  utilities: "공과금",
+  rent: "임대료",
+  other: "기타",
 };

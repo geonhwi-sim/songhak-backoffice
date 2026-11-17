@@ -18,7 +18,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import select, text
 
 from app import models as m
@@ -40,11 +40,18 @@ PASSWORD_MAX = 128
 Password = Annotated[str, StringConstraints(min_length=1, max_length=PASSWORD_MAX)]
 
 # 검증 실패(422)를 화면에 그대로 보여 줄 수 있는 한 문장으로. 필드 이름 → 안내 문구
+# 지출 입력 상한. 금액 상한은 자릿수를 잘못 친 입력(0을 하나 더)을 막는 용도
+VENDOR_MAX, MEMO_MAX, AMOUNT_MAX = 60, 200, 100_000_000
 FIELD_MESSAGES = {
     "question": f"질문은 2~{QUESTION_MAX}자로 입력해 주세요.",
     "email": "이메일을 확인해 주세요.",
     "password": f"비밀번호를 입력해 주세요 ({PASSWORD_MAX}자 이하).",
     "month": "월은 2026-09처럼 YYYY-MM 형식이어야 합니다.",
+    "spent_on": "날짜를 확인해 주세요.",
+    "vendor": f"산 곳을 1~{VENDOR_MAX}자로 입력해 주세요.",
+    "category": "분류를 골라 주세요.",
+    "amount": f"금액은 1원 이상 {AMOUNT_MAX // 10_000:,}만 원 이하의 숫자로 입력해 주세요.",
+    "memo": f"메모는 {MEMO_MAX}자 이하로 입력해 주세요.",
 }
 
 Month = Annotated[str, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="YYYY-MM", examples=["2026-09"])]
@@ -181,6 +188,52 @@ def supply_orders(
     if start and end and start > end:
         raise HTTPException(422, "start가 end보다 늦습니다")
     return reports.supply_orders(s, start, end, status, include_deleted)
+
+
+# ── 지출 · 손익 (사장님) ──
+
+Vendor = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=VENDOR_MAX)]
+Memo = Annotated[str, StringConstraints(strip_whitespace=True, max_length=MEMO_MAX)]
+
+
+class ExpenseBody(BaseModel):
+    spent_on: date
+    vendor: Vendor
+    category: Literal[m.EXPENSE_CATEGORIES]  # type: ignore[valid-type]
+    amount: Annotated[int, Field(strict=True, gt=0, le=AMOUNT_MAX)]
+    memo: Memo | None = None
+
+
+@app.get("/api/expenses", summary="한 달(달력 기준)의 지출 목록과 분류별 합계")
+def expenses(s: DB, _: Owner, month: Month) -> dict:
+    return reports.expenses(s, month)
+
+
+@app.post("/api/expenses", status_code=201, summary="지출 한 건 입력")
+def add_expense(body: ExpenseBody, s: DB, user: Owner) -> dict:
+    if body.spent_on > reports.today_kst():
+        raise HTTPException(422, "앞으로의 날짜는 넣을 수 없습니다")
+    x = m.Expense(spent_on=body.spent_on, vendor=body.vendor, category=body.category, amount=body.amount,
+                  memo=body.memo or None, source="manual", created_by=user.id)
+    s.add(x)
+    s.commit()
+    return {"id": x.id, "spent_on": x.spent_on, "vendor": x.vendor, "category": x.category, "amount": x.amount,
+            "memo": x.memo, "source": x.source}
+
+
+@app.delete("/api/expenses/{expense_id}", summary="지출 지우기 (기록은 남기고 목록·합계에서 뺀다)")
+def delete_expense(expense_id: int, s: DB, _: Owner) -> dict:
+    x = s.get(m.Expense, expense_id)
+    if x is None or x.deleted_at is not None:
+        raise HTTPException(404, "지출을 찾을 수 없습니다")
+    x.deleted_at = datetime.now(timezone.utc)
+    s.commit()
+    return {"id": expense_id, "deleted": True}
+
+
+@app.get("/api/profit", summary="월 손익 요약: 매출(외상 정산) − 비용(지출 + 발주 + 인건비)")
+def profit(s: DB, _: Owner, month: Month) -> dict:
+    return reports.profit(s, month)
 
 
 class AskBody(BaseModel):

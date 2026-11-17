@@ -309,6 +309,34 @@ class SupplyPayment(Base):
     order: Mapped[SupplyOrder] = relationship(back_populates="payment")
 
 
+# ── 지출 (백오피스에서 직접 입력) ──
+
+EXPENSE_CATEGORIES = ("food", "supplies", "utilities", "rent", "other")  # 식재료, 소모품, 공과금, 임대료, 기타
+
+
+class Expense(Base):
+    """가게가 직접 쓴 돈. 식재료는 대부분 매장·도매상에서 사 오므로 발주 앱에 남지 않는다.
+    지금은 사장님이 손으로 넣고, 나중에 영수증 사진에서 뽑은 값도 같은 표에 넣는다 (source = 'receipt').
+    잘못 넣은 건은 지우지 않고 deleted_at을 채운다 (언제 무엇을 지웠는지 남게)."""
+
+    __tablename__ = "expenses"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint(f"category IN {EXPENSE_CATEGORIES}", name="category"),
+        CheckConstraint("source IN ('manual', 'receipt')", name="source"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    spent_on: Mapped[date] = mapped_column(index=True)
+    vendor: Mapped[str] = mapped_column(Text)  # 산 곳 (매장, 도매상, 공과금 이름)
+    category: Mapped[str] = mapped_column(String(16))
+    amount: Mapped[int]
+    memo: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(16), server_default="manual")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("app_users.id"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    deleted_at: Mapped[datetime | None]
+
+
 # ── 기타 · 운영 ──
 
 

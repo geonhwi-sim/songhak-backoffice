@@ -143,6 +143,15 @@ erDiagram
 - 원본 발주 항목에는 품목 ID가 없고 이름·단위·가격만 복사돼 있다. 그래서 당시 값을 그대로 저장하고, `supply_item_id`는 이름이 같은 품목이 있을 때만 채운다.
 - 발주 비용은 `supply_payments.paid_amount`가 있으면 그 값을, 없으면 `estimated_total`을 쓴다.
 
+### 지출 (2026-11-17)
+
+| 테이블 | 컬럼 |
+|---|---|
+| expenses | id, spent_on date, vendor text, category ('food' \| 'supplies' \| 'utilities' \| 'rent' \| 'other'), amount int check (> 0), memo, source ('manual' \| 'receipt'), created_by → app_users null, created_at, deleted_at null |
+
+- 원본 앱이 없는 표다. 식재료는 대부분 매장·도매상에서 직접 사 와서 발주 앱에 남지 않으므로 백오피스에서 입력한다. 나중에 영수증 사진에서 뽑은 값도 `source = 'receipt'`로 같은 표에 넣는다.
+- 잘못 넣은 건은 지우지 않고 `deleted_at`을 채운다. 목록·합계·`qa.expenses` 뷰는 지운 건을 뺀다.
+
 ### 기타 · 운영
 
 | 테이블 | 컬럼 |

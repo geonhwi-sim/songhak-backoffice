@@ -91,6 +91,10 @@ SUPPLIES = [
     ("소모품", "주방 세제", "통", 22000, (1, 1)),
 ]
 CARDS = [("사업자 카드", "4821"), ("법인 체크카드", "1937")]
+# 직접 입력하는 지출: 장보기(산 곳, 금액 범위 천 원 단위)와 매달 나가는 돈 (산 곳, 분류, 날짜, 금액 범위 천 원 단위)
+MARKETS = [("가락시장 청과", (40, 160)), ("동네 정육점", (60, 220)), ("한빛 식자재마트", (30, 120))]
+MONTHLY = [("상가 임대료", "rent", 1, (1800, 1800)), ("도시가스", "utilities", 20, (180, 320)),
+           ("한국전력", "utilities", 22, (240, 420)), ("주방 소모품 도매", "supplies", 10, (60, 140))]
 
 
 @dataclass
@@ -311,6 +315,27 @@ def seed(s: Session, until: date) -> dict:
                                   card_label=f"{card.nickname} {card.last4}"))
             paid += 1
 
+    # ── 지출 (직접 입력) ──
+    rng = random.Random(f"{SEED}-expense")
+    expenses = 0
+    for d in days(START, until):
+        go = rng.random() < 0.4
+        where, (lo, hi) = rng.choice(MARKETS)
+        amount = rng.randint(lo, hi) * 1000
+        if go and is_open(d):
+            s.add(m.Expense(spent_on=d, vendor=where, category="food", amount=amount))
+            expenses += 1
+    # 매달 나가는 돈은 난수를 따로 쓴다 (--until이 늘어 장보기 난수가 더 뽑혀도 지난달 금액이 바뀌지 않게)
+    rng = random.Random(f"{SEED}-monthly")
+    month = START
+    while month <= until:
+        for vendor, cat, day, (lo, hi) in MONTHLY:
+            amount = rng.randint(lo, hi) * 1000
+            if month.replace(day=day) <= until:
+                s.add(m.Expense(spent_on=month.replace(day=day), vendor=vendor, category=cat, amount=amount))
+                expenses += 1
+        month = (month + timedelta(days=32)).replace(day=1)
+
     # ── 기타 ──
     s.add_all(m.DayMemo(memo_date=d, body=b) for d, b in MEMOS.items() if d <= until)
     done_at = at(until, 5)
@@ -332,7 +357,8 @@ def seed(s: Session, until: date) -> dict:
     s.flush()
 
     return {"until": until.isoformat(), "sales_orders": orders, "deleted_orders": deleted, "work_logs": logs,
-            "payroll_periods": periods, "supply_orders": supply_orders, "supply_payments": paid}
+            "payroll_periods": periods, "supply_orders": supply_orders, "supply_payments": paid,
+            "expenses": expenses}
 
 
 def main(argv: list[str] | None = None) -> None:
