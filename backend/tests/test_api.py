@@ -121,6 +121,38 @@ def test_settlement_pdf_downloads_with_korean_file_name(client):
     assert c.get("/api/settlements/999999/pdf", params={"month": "2026-09"}).status_code == 404
 
 
+def test_settlement_for_chosen_period(client):
+    # 다음 달 며칠을 함께 받을 때: 9/1 ~ 10/1 한 장 (원본에서 지워진 9/15 주문은 빠진다)
+    c, ids = client
+    q = {"start": "2026-09-01", "end": "2026-10-01"}
+    body = c.get(f"/api/settlements/{ids['place']}", params=q).json()
+    assert [o["date"] for o in body["orders"]] == ["2026-09-01", "2026-09-30", "2026-10-01"]
+    assert body["total"] == 24700 + 6500 and body["month"] is None
+    r = c.get(f"/api/settlements/{ids['place']}/pdf", params=q)
+    assert r.status_code == 200 and r.content.startswith(b"%PDF-")
+    assert "filename*=UTF-8''2026-09-01~2026-10-01%20" in r.headers["content-disposition"]
+
+
+@pytest.mark.parametrize("params, message", [
+    ({"month": "2026-09", "start": "2026-09-01", "end": "2026-09-30"}, "하나만"),
+    ({}, "하나만"),
+    ({"start": "2026-09-01"}, "모두"),
+    ({"start": "2026-10-02", "end": "2026-10-01"}, "늦습니다"),
+    ({"start": "2026-01-01", "end": "2026-04-04"}, "93일"),  # 1/1~4/3은 딱 93일이라 된다
+    ({"start": "2026-01-01", "end": "2026-04-03", "ok": 1}, ""),
+    ({"start": "2026-02-30", "end": "2026-03-01"}, "시작일"),
+])
+def test_settlement_period_must_be_valid(client, params, message):
+    c, ids = client
+    ok = params.pop("ok", None)
+    for path in (f"/api/settlements/{ids['place']}", f"/api/settlements/{ids['place']}/pdf"):
+        r = c.get(path, params=params)
+        if ok:
+            assert r.status_code == 200
+        else:
+            assert r.status_code == 422 and message in r.json()["detail"]
+
+
 def test_monthly_archive_makes_each_place_once(client, tmp_path):
     from app.deps import get_session  # client 픽스처의 세션을 그대로 쓴다
     from app.invoices import archive_month, last_month

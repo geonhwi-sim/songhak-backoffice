@@ -4,7 +4,7 @@
 - 급여 기간: 전월 17일 ~ 당월 16일 (app/payroll.py)
 - 발주 비용: 결제 금액이 있으면 그 값, 없으면 단가표 기준 예상 금액
 - 지출: 백오피스에서 직접 입력한 돈 (매장·도매상 장보기, 공과금). 손익 = 매출 − (지출 + 발주 + 인건비)
-- 홀 매출: OK POS 엑셀에서 올린 일별 실매출 (app/pos_import.py). 매출 = POS − POS에 찍은 외상 + 외상 정산
+- 홀 매출: OK POS 엑셀에서 올린 일별 실매출 (app/pos_import.py). 매출 = POS − POS에 찍은 외상 + 외상 정산 ± 보정
 - 날짜는 한국 시간 기준
 """
 
@@ -66,11 +66,20 @@ def settlements(session: Session, month: str) -> dict:
             "total": sum(x["amount"] for x in places)}
 
 
-def settlement_detail(session: Session, place_id: int, month: str) -> dict | None:
+MAX_INVOICE_DAYS = 93  # 기간 정산서는 석 달까지 (예: 9/1 ~ 10/2처럼 다음 달 며칠을 함께 받을 때)
+
+
+def settlement_detail(session: Session, place_id: int, month: str | None = None,
+                      start: date | None = None, end: date | None = None) -> dict | None:
+    """한 정산처의 주문 내역. month(달력 한 달) 또는 start~end(직접 고른 기간, 끝 날짜 포함) 중 하나로 고른다.
+    기간으로 고르면 month는 None이다."""
     place = session.get(m.Place, place_id)
     if place is None:
         return None
-    start, end = month_range(month)
+    if month is not None:
+        start, end = month_range(month)
+    elif start is None or end is None or start > end or (end - start).days >= MAX_INVOICE_DAYS:
+        raise ValueError("기간이 올바르지 않습니다")
     orders = session.scalars(
         select(m.SalesOrder).options(selectinload(m.SalesOrder.items))
         .where(m.SalesOrder.place_id == place_id, m.SalesOrder.order_date.between(start, end),
@@ -230,8 +239,14 @@ def pos_sales(session: Session, month: str) -> dict:
 
     imp = m.PosImport
     last = session.scalars(select(imp).order_by(imp.id.desc()).limit(5)).all()
+    a = m.RevenueAdjustment
+    adjustments = [
+        {"id": x.id, "kind": x.kind, "amount": x.amount, "memo": x.memo, "created_at": x.created_at}
+        for x in session.scalars(select(a).where(a.month == start, a.deleted_at.is_(None)).order_by(a.id))
+    ]
     return {
         "month": month, "start": start, "end": end,
+        "adjustments": adjustments,
         "days": days, "day_count": len(days), "net_total": sum(x["net"] for x in days),
         "cash_total": sum(x["cash"] for x in days), "last_date": days[-1]["date"] if days else None,
         "menu": menu_items, "menu_net_total": sum(x["net"] for x in menu_items),
@@ -252,6 +267,8 @@ def profit(session: Session, month: str) -> dict:
       외상 거래처 주문은 POS에도 '주문확인용'으로 찍고 정산 앱에도 남아서, 그냥 더하면 두 번 센다.
       메뉴별 자료(상품 분석)를 올린 기간만 뺄 수 있으므로, 일별 자료가 메뉴 자료보다 뒤까지 있으면
       credit_unchecked로 알린다.
+    - 보정 (사장님이 매출 화면에서 넣는다): 다른 메뉴로 찍은 외상 결제는 빼고 (POS 자료가 있을 때만),
+      정산 앱에서 지운 그달 외상 주문은 더한다.
     - 비용: 직접 입력한 지출 + 발주 앱 비용 + 인건비.
       인건비는 그 달 16일에 끝나는 급여 기간(전월 17일 ~ 당월 16일)의 금액이다. 그 달에 나가는 돈이라서다.
     - 발주 앱에 결제를 남긴 건을 지출에도 넣으면 두 번 세어진다 (화면에서 안내한다).
@@ -270,8 +287,13 @@ def profit(session: Session, month: str) -> dict:
         "pos": pos["net_total"] if connected else None,
         "pos_credit": pos["credit_item"] if connected and pos["menu_until"] else None,  # 뺄 금액 (양수)
     }
+    adj = pos["adjustments"]
+    paid = sum(x["amount"] for x in adj if x["kind"] == "credit_paid")
+    revenue["credit_paid_other"] = paid if connected and paid else None  # 뺄 금액 (양수)
+    revenue["credit_missing"] = sum(x["amount"] for x in adj if x["kind"] == "credit_missing") or None
     costs = {**exp["by_category"], "supply_app": supply, "labor": labor["total"]}
-    revenue_total = credit + (revenue["pos"] or 0) - (revenue["pos_credit"] or 0)
+    revenue_total = (credit + (revenue["pos"] or 0) - (revenue["pos_credit"] or 0)
+                     - (revenue["credit_paid_other"] or 0) + (revenue["credit_missing"] or 0))
     cost_total = sum(costs.values())
     return {
         "month": month, "start": start, "end": end, "pay_start": pay_start, "pay_end": pay_end,
@@ -282,6 +304,7 @@ def profit(session: Session, month: str) -> dict:
         "pos_connected": connected,
         "pos_days": pos["day_count"], "pos_last_date": pos["last_date"], "pos_menu_until": pos["menu_until"],
         "credit_unchecked": connected and (pos["menu_until"] is None or pos["menu_until"] < pos["last_date"]),
+        "adjustments": adj,
     }
 
 

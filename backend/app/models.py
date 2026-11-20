@@ -394,6 +394,31 @@ class PosMenuSale(Base):
     import_id: Mapped[int] = mapped_column(ForeignKey("pos_imports.id"))
 
 
+ADJUSTMENT_KINDS = ("credit_paid", "credit_missing")
+
+
+class RevenueAdjustment(Base):
+    """손익 매출 보정. 사장님이 매출 화면에서 넣는다.
+    - credit_paid: POS에서 주문확인용이 아닌 다른 메뉴로 찍은 외상 결제 (지난 외상값). 매출에서 뺀다.
+    - credit_missing: 그달 먹었지만 정산 앱에서 지운 외상 주문 (다른 달 결제에 함께 받음). 매출에 더한다.
+    잘못 넣은 건은 지우지 않고 deleted_at을 채운다."""
+
+    __tablename__ = "revenue_adjustments"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="amount_positive"),
+        CheckConstraint(f"kind IN {ADJUSTMENT_KINDS}", name="kind"),
+        CheckConstraint("EXTRACT(DAY FROM month) = 1", name="month_first_day"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    month: Mapped[date] = mapped_column(index=True)  # 그달 1일
+    kind: Mapped[str] = mapped_column(String(16))
+    amount: Mapped[int]
+    memo: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("app_users.id"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    deleted_at: Mapped[datetime | None]
+
+
 # ── 기타 · 운영 ──
 
 

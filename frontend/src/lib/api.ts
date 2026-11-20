@@ -61,7 +61,8 @@ export type SettlementItem = {
 export type SettlementDetail = {
   place_id: number;
   name: string;
-  month: string;
+  /** 직접 고른 기간이면 null */
+  month: string | null;
   start: string;
   end: string;
   orders: { order_id: number; date: string; items: SettlementItem[]; total: number }[];
@@ -188,8 +189,14 @@ export type Profit = {
   end: string;
   pay_start: string;
   pay_end: string;
-  // 매출 = POS 실매출 − POS에 찍은 외상(주문확인용, pos_credit) + 외상 정산
-  revenue: { credit: number; pos: number | null; pos_credit: number | null };
+  // 매출 = POS 실매출 − POS에 찍은 외상(주문확인용, pos_credit) + 외상 정산 − 다른 메뉴로 찍은 외상 결제 + 정산 앱에서 지운 외상
+  revenue: {
+    credit: number;
+    pos: number | null;
+    pos_credit: number | null;
+    credit_paid_other: number | null;
+    credit_missing: number | null;
+  };
   revenue_total: number;
   costs: Record<ExpenseCategory, number> & { supply_app: number; labor: number };
   cost_total: number;
@@ -201,7 +208,13 @@ export type Profit = {
   pos_menu_until: string | null;
   /** 일별 POS 자료가 메뉴별 자료보다 뒤까지 있어 그 사이 외상을 못 뺐다 */
   credit_unchecked: boolean;
+  adjustments: Adjustment[];
 };
+
+/** 손익 매출 보정 (backend models.RevenueAdjustment) */
+export type AdjustmentKind = "credit_paid" | "credit_missing";
+
+export type Adjustment = { id: number; kind: AdjustmentKind; amount: number; memo: string; created_at: string };
 
 // ── 홀 매출 (OK POS 엑셀) ──
 
@@ -236,6 +249,7 @@ export type PosSales = {
   credit_item: number;
   checks: { start: string; end: string; menu_net: number; daily_net: number; match: boolean }[];
   imports: PosImport[];
+  adjustments: Adjustment[];
 };
 
 /** 미리보기·넣기 결과 (backend app/pos_import.py summary) */

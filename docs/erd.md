@@ -159,10 +159,12 @@ erDiagram
 | pos_imports | id, kind ('daily' \| 'menu'), period_start, period_end (check start ≤ end), file_name, rows, net_total, imported_by → app_users null, imported_at |
 | pos_daily_sales | id, business_date, pos_no, gross, discount, net, cash, closed_at null, import_id → pos_imports, unique (business_date, pos_no) |
 | pos_menu_sales | id, period_start, period_end, category, code, name, net, qty, import_id → pos_imports, unique (period_start, period_end, code) |
+| revenue_adjustments | id, month (그달 1일, check), kind ('credit_paid' \| 'credit_missing'), amount (check > 0), memo, created_by → app_users null, created_at, deleted_at null |
 
 - 원본 앱이 없는 표다. 사장님이 OK POS 웹 관리자에서 내려받은 'POS정산내역'(일별)과 '상품 ABC 분석'(메뉴별)을 화면에서 올린다.
 - 같은 기간을 다시 올리면 그 기간 자료를 지우고 새로 넣는다. 메뉴별 자료는 기간이 겹치는 것도 지운다 (겹친 채로 두면 같은 판매를 두 번 센다). 올린 기록은 `pos_imports`에 모두 남는다.
-- 외상 거래처 주문은 POS에 '주문확인용' 품목으로 찍는다. 정산 앱의 외상과 같은 돈이라 손익에서 한 번 뺀다.
+- '주문확인용'은 거래처가 지난 외상값을 낼 때 POS에 찍는 품목이다. 외상은 정산 앱 기준(먹은 달)으로 더하므로 손익에서 뺀다.
+- `revenue_adjustments`(2026-11-20): 두 기록만으로 맞출 수 없는 외상을 사장님이 달마다 적는다. credit_paid는 다른 메뉴로 찍은 외상 결제(뺌), credit_missing은 정산 앱에서 지운 그달 외상 주문(더함). 지운 건은 deleted_at.
 - 자연어 질의 뷰(qa)는 아직 열지 않았다. "매출"의 뜻이 외상 정산에서 바뀌므로 평가를 다시 돌린 뒤 연다.
 
 ### 기타 · 운영

@@ -1,6 +1,7 @@
 """정산서 PDF.
 
 - 화면의 "PDF" 버튼: GET /api/settlements/{place_id}/pdf?month=YYYY-MM 이 그때그때 만든다.
+  ?start=&end= 로 기간을 직접 고를 수도 있다 (예: 9/1 ~ 10/2를 한 번에 받을 때).
 - 매달 보관: deploy/daily.sh가 매일 `python -m app.invoices` 를 부른다. 지난달 정산서가 아직 없으면
   정산처마다 PDF를 만들어 INVOICE_DIR(기본 DATA_DIR/invoices)/YYYY-MM/ 에 둔다. 1일에 실패해도 다음 날 다시 만든다.
   이미 있는 파일은 덮어쓰지 않는다. 그달 거래처에 보낸 정산서 원본으로 남기려는 것이다.
@@ -51,6 +52,15 @@ def md(d: date) -> str:
     return f"{d.month}/{d.day}"
 
 
+def period_label(detail: dict) -> str:
+    """한 달이면 '2026년 9월', 직접 고른 기간이면 '2026.9.1 ~ 2026.10.2'"""
+    if detail.get("month"):
+        year, month = detail["month"].split("-")
+        return f"{year}년 {int(month)}월"
+    a, b = detail["start"], detail["end"]
+    return f"{a.year}.{a.month}.{a.day} ~ {b.year}.{b.month}.{b.day}"
+
+
 def render(detail: dict, issued: date | None = None) -> bytes:
     """settlement_detail() 결과 하나를 A4 PDF로 만든다."""
     issued = issued or today_kst()
@@ -59,8 +69,8 @@ def render(detail: dict, issued: date | None = None) -> bytes:
     pdf.set_auto_page_break(True, margin=18)
     pdf.add_font("kr", "", _font(FONT_CANDIDATES, "FONT_PATH"))
     pdf.add_font("kr", "B", _font(BOLD_CANDIDATES, "FONT_BOLD_PATH"))
-    year, month = detail["month"].split("-")
-    pdf.set_title(f"{detail['name']} {year}년 {int(month)}월 정산서")
+    period = period_label(detail)
+    pdf.set_title(f"{detail['name']} {period} 정산서")
     pdf.set_author(STORE_NAME)
 
     def footer():
@@ -78,7 +88,7 @@ def render(detail: dict, issued: date | None = None) -> bytes:
     pdf.set_font("kr", "", 10)
     pdf.set_text_color(90)
     n_orders = len(detail["orders"])
-    pdf.cell(0, 6, f"{year}년 {int(month)}월 ({md(detail['start'])} ~ {md(detail['end'])}) · 주문 {n_orders}건 · {STORE_NAME}",
+    pdf.cell(0, 6, f"{period} ({md(detail['start'])} ~ {md(detail['end'])}) · 주문 {n_orders}건 · {STORE_NAME}",
              new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_text_color(0)
     pdf.ln(3)
@@ -127,7 +137,8 @@ def render(detail: dict, issued: date | None = None) -> bytes:
 def file_name(detail: dict) -> str:
     # 파일 이름에 쓸 수 없는 글자만 바꾼다
     safe = "".join("_" if c in '\\/:*?"<>|' else c for c in detail["name"]).strip()
-    return f"{detail['month']} {safe} 정산서.pdf"
+    when = detail["month"] or f"{detail['start']}~{detail['end']}"
+    return f"{when} {safe} 정산서.pdf"
 
 
 def last_month(day: date) -> str:

@@ -202,7 +202,8 @@ def test_profit_adds_up(owner, session):
     assert labor >= 150000  # 1/20 근무는 2월 급여라서 빠진다
 
     data = c.get("/api/profit", params={"month": JAN}).json()
-    assert data["revenue"] == {"credit": 120000, "pos": None, "pos_credit": None} and data["revenue_total"] == 120000
+    assert data["revenue"] == {"credit": 120000, "pos": None, "pos_credit": None, "credit_paid_other": None,
+                               "credit_missing": None} and data["revenue_total"] == 120000
     assert data["costs"] == {"food": 150000, "supplies": 0, "utilities": 0, "rent": 1800000, "other": 0,
                              "supply_app": 42000, "labor": labor}
     assert data["cost_total"] == 150000 + 1800000 + 42000 + labor

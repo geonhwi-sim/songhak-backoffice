@@ -2,15 +2,25 @@
 
 import { useRef, useState } from "react";
 import useSWR from "swr";
-import { CircleAlert, CircleCheck, FileSpreadsheet } from "lucide-react";
+import { CircleAlert, CircleCheck, FileSpreadsheet, Trash2 } from "lucide-react";
 
 import { Empty, ErrorBox, Loading, MonthPicker, PageHeader } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { fetcher, uploadPos, type PosImport, type PosPreview, type PosSales } from "@/lib/api";
+import {
+  api,
+  fetcher,
+  uploadPos,
+  type Adjustment,
+  type AdjustmentKind,
+  type PosImport,
+  type PosPreview,
+  type PosSales,
+} from "@/lib/api";
 import { kstTime, md, monthLabel, num, todayKst, won } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -46,7 +56,10 @@ export default function SalesPage() {
         )}
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-          <UploadCard onImported={onImported} imports={sales.data?.imports ?? []} />
+          <div className="grid h-fit gap-4">
+            <UploadCard onImported={onImported} imports={sales.data?.imports ?? []} />
+            <AdjustmentCard month={month} items={sales.data?.adjustments} onChange={() => sales.mutate()} />
+          </div>
           <Card>
             <CardHeader>
               <CardTitle>{monthLabel(month)} 일별</CardTitle>
@@ -80,7 +93,7 @@ function Summary({ s }: { s: PosSales }) {
           foot={s.last_date ? `${s.day_count}일 · ${md(s.last_date)}까지` : "올린 자료 없음"} testId="pos-net" />
         <Stat title="하루 평균" value={won(avg)} foot={`현금 ${won(s.cash_total)}`} />
         <Stat title="POS에 찍은 외상" value={won(s.menu_until ? s.credit_item : null)}
-          foot={s.menu_until ? "주문확인용 · 정산 앱 외상과 같은 돈이라 손익에서 뺍니다" : "메뉴별 자료를 올리면 보입니다"} />
+          foot={s.menu_until ? "주문확인용 · 거래처가 낸 지난 외상값이라 손익에서 뺍니다" : "메뉴별 자료를 올리면 보입니다"} />
       </div>
 
       {s.checks.length > 0 && (
@@ -352,6 +365,124 @@ function MenuTable({ s }: { s: PosSales }) {
           )}
         </CardContent>
       )}
+    </Card>
+  );
+}
+
+const ADJ: Record<AdjustmentKind, { label: string; sign: string; help: string; example: string }> = {
+  credit_paid: {
+    label: "다른 메뉴로 찍은 외상 결제",
+    sign: "−",
+    help: "거래처 외상값을 POS에서 주문확인용이 아닌 메뉴로 찍었을 때. 손익 매출에서 뺍니다.",
+    example: "예: ○○ 9월분, 육회비빔밥으로 찍음",
+  },
+  credit_missing: {
+    label: "정산 앱에서 지운 외상",
+    sign: "+",
+    help: "이달에 먹었지만 다른 달 결제에 함께 받고 정산 앱에서 지운 주문. 손익 매출에 더합니다.",
+    example: "예: ○○ 10/1~10/2, 9월분과 같이 받음",
+  },
+};
+const ADJ_KINDS = Object.keys(ADJ) as AdjustmentKind[];
+
+// 손익 매출 보정: POS와 정산 앱만으로는 맞출 수 없는 외상을 사장님이 달마다 적는다 (backend models.RevenueAdjustment)
+function AdjustmentCard({ month, items, onChange }: { month: string; items?: Adjustment[]; onChange: () => void }) {
+  const [kind, setKind] = useState<AdjustmentKind>("credit_paid");
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const value = Number(amount.replace(/[^\d]/g, "")) || 0; // "150,000"처럼 쳐도 숫자만
+
+  const submit = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await api("/api/revenue-adjustments", { method: "POST", body: JSON.stringify({ month, kind, amount: value, note }) });
+      setAmount("");
+      setNote("");
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "저장하지 못했습니다");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (a: Adjustment) => {
+    if (!window.confirm(`${ADJ[a.kind].label} ${won(a.amount)}을 지울까요?`)) return;
+    setError(null);
+    try {
+      await api(`/api/revenue-adjustments/${a.id}`, { method: "DELETE" });
+      onChange();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "지우지 못했습니다");
+    }
+  };
+
+  return (
+    <Card className="h-fit">
+      <CardHeader>
+        <CardTitle>{monthLabel(month)} 외상 보정</CardTitle>
+        <CardDescription>POS·정산 앱 기록만으로 맞지 않는 외상을 적으면 손익 매출에 반영됩니다.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {items && items.length > 0 && (
+          <ul className="grid gap-1.5 text-sm" aria-label="외상 보정 목록">
+            {items.map((a) => (
+              <li key={a.id} className="flex items-start gap-2">
+                <span className="min-w-0 flex-1">
+                  <span className="text-muted-foreground">{ADJ[a.kind].label}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{a.memo}</span>
+                </span>
+                <span className="shrink-0 tabular-nums">
+                  {ADJ[a.kind].sign}
+                  {won(a.amount)}
+                </span>
+                <button type="button" onClick={() => remove(a)} aria-label={`${a.memo} 보정 지우기`}
+                  className="shrink-0 text-muted-foreground hover:text-destructive">
+                  <Trash2 className="size-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form onSubmit={submit} className="grid gap-3 border-t pt-3" aria-label="외상 보정 넣기">
+          <fieldset className="grid gap-1.5">
+            <legend className="mb-1.5 text-sm font-medium">종류</legend>
+            {ADJ_KINDS.map((k) => (
+              <label key={k} className="flex items-start gap-2 text-sm">
+                <input type="radio" name="adj-kind" value={k} checked={kind === k} onChange={() => setKind(k)}
+                  className="mt-1" />
+                <span>
+                  {ADJ[k].label} <span className="text-muted-foreground">({ADJ[k].sign})</span>
+                  <span className="block text-xs text-muted-foreground">{ADJ[k].help}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          <div className="grid gap-1.5">
+            <Label htmlFor="adj-amount">금액 (원)</Label>
+            <Input id="adj-amount" inputMode="numeric" value={amount} required placeholder="예: 150000"
+              onChange={(e) => setAmount(e.target.value)} />
+            {value > 0 && <p className="text-xs text-muted-foreground tabular-nums">{won(value)}</p>}
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="adj-note">메모</Label>
+            <Input id="adj-note" value={note} maxLength={200} required placeholder={ADJ[kind].example}
+              onChange={(e) => setNote(e.target.value)} />
+          </div>
+          {error && (
+            <p role="alert" className="flex items-start gap-1.5 text-sm text-destructive">
+              <CircleAlert className="mt-0.5 size-4 shrink-0" /> {error}
+            </p>
+          )}
+          <Button type="submit" disabled={busy}>
+            {busy ? "저장 중…" : "보정 추가"}
+          </Button>
+        </form>
+      </CardContent>
     </Card>
   );
 }

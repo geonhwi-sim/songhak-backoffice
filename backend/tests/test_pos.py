@@ -231,14 +231,16 @@ def test_sales_and_profit(client, session):
     # 일별만 올리면: POS 매출은 들어가지만 외상(주문확인용)을 아직 못 빼서 알린다
     upload(client, "/api/pos/import", daily())
     p = client.get("/api/profit", params={"month": JAN}).json()
-    assert p["revenue"] == {"credit": 500000, "pos": 2984500, "pos_credit": None}
+    assert p["revenue"] == {"credit": 500000, "pos": 2984500, "pos_credit": None, "credit_paid_other": None,
+                            "credit_missing": None}
     assert p["revenue_total"] == 3484500 and p["pos_connected"] and p["credit_unchecked"]
     assert p["pos_days"] == 3 and p["pos_last_date"] == "2020-01-04"
 
     # 메뉴별까지 올리면: 매출 = POS − 주문확인용 + 외상 정산
     upload(client, "/api/pos/import", menu())
     p = client.get("/api/profit", params={"month": JAN}).json()
-    assert p["revenue"] == {"credit": 500000, "pos": 2984500, "pos_credit": 524500}
+    assert p["revenue"] == {"credit": 500000, "pos": 2984500, "pos_credit": 524500, "credit_paid_other": None,
+                            "credit_missing": None}
     assert p["revenue_total"] == 2984500 - 524500 + 500000 and not p["credit_unchecked"]
     assert p["profit"] == p["revenue_total"] - p["cost_total"]
 
@@ -250,6 +252,61 @@ def test_sales_and_profit(client, session):
     assert s["checks"] == [{"start": "2020-01-01", "end": "2020-01-31", "menu_net": 2984500, "daily_net": 2984500,
                             "match": True}]
     assert [x["kind"] for x in s["imports"]][:2] == ["menu", "daily"]
+
+
+def test_adjustments_change_revenue(client, session):
+    # 다른 메뉴로 찍은 외상 결제는 빼고, 정산 앱에서 지운 그달 외상은 더한다. 지우면 돌아온다
+    credit_order(session, date(2020, 1, 3), 500000)
+    upload(client, "/api/pos/import", daily())
+    upload(client, "/api/pos/import", menu())
+    base = client.get("/api/profit", params={"month": JAN}).json()["revenue_total"]
+
+    add = lambda kind, amount, note: client.post(  # noqa: E731
+        "/api/revenue-adjustments", json={"month": JAN, "kind": kind, "amount": amount, "note": note})
+    paid = add("credit_paid", 300000, "  거래처A 12월분, 물냉면으로 찍음 ")
+    assert paid.status_code == 201 and paid.json()["memo"] == "거래처A 12월분, 물냉면으로 찍음"
+    assert add("credit_missing", 40000, "거래처B 1/30~1/31").status_code == 201
+
+    p = client.get("/api/profit", params={"month": JAN}).json()
+    assert p["revenue"]["credit_paid_other"] == 300000 and p["revenue"]["credit_missing"] == 40000
+    assert p["revenue_total"] == base - 300000 + 40000
+    s = client.get("/api/pos/sales", params={"month": JAN}).json()
+    assert [(x["kind"], x["amount"]) for x in s["adjustments"]] == [("credit_paid", 300000), ("credit_missing", 40000)]
+    assert client.get("/api/pos/sales", params={"month": "2020-02"}).json()["adjustments"] == []  # 다른 달은 그대로
+
+    assert client.delete(f"/api/revenue-adjustments/{paid.json()['id']}").status_code == 200
+    assert client.delete(f"/api/revenue-adjustments/{paid.json()['id']}").status_code == 404
+    assert client.get("/api/profit", params={"month": JAN}).json()["revenue_total"] == base + 40000
+
+
+def test_adjustment_paid_needs_pos(client, session):
+    # POS 자료가 없는 달에는 뺄 POS 매출이 없으니 '다른 메뉴로 찍은 외상 결제'는 손익에 쓰지 않는다
+    client.post("/api/revenue-adjustments", json={"month": "2019-05", "kind": "credit_paid", "amount": 1000, "note": "x"})
+    client.post("/api/revenue-adjustments", json={"month": "2019-05", "kind": "credit_missing", "amount": 700, "note": "y"})
+    p = client.get("/api/profit", params={"month": "2019-05"}).json()
+    assert p["revenue"]["credit_paid_other"] is None and p["revenue"]["credit_missing"] == 700
+
+
+@pytest.mark.parametrize("body, message", [
+    ({"kind": "credit_paid", "amount": 0, "note": "x"}, "금액"),
+    ({"kind": "credit_paid", "amount": "1000", "note": "x"}, "금액"),
+    ({"kind": "credit_paid", "amount": 1000, "note": "   "}, "메모"),
+    ({"kind": "refund", "amount": 1000, "note": "x"}, "종류"),
+    ({"month": "2020-13", "kind": "credit_paid", "amount": 1000, "note": "x"}, "월은"),
+    ({"month": "2999-01", "kind": "credit_paid", "amount": 1000, "note": "x"}, "앞으로"),
+])
+def test_adjustment_validation(client, body, message):
+    r = client.post("/api/revenue-adjustments", json={"month": JAN, **body})
+    assert r.status_code == 422 and message in r.json()["detail"]
+
+
+def test_adjustment_owner_only(client):
+    client.post("/api/auth/logout")
+    body = {"month": JAN, "kind": "credit_paid", "amount": 1000, "note": "x"}
+    assert client.post("/api/revenue-adjustments", json=body).status_code == 401
+    client.post("/api/auth/login", json={"email": "staff@test.local", "password": PASSWORD})
+    assert client.post("/api/revenue-adjustments", json=body).status_code == 403
+    assert client.delete("/api/revenue-adjustments/1").status_code == 403
 
 
 def test_check_finds_mismatch_and_menu_shorter_than_daily(session):

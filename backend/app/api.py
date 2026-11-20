@@ -20,6 +20,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import select, text
+from sqlalchemy.orm import Session
 
 from app import models as m
 from app import reports
@@ -52,9 +53,14 @@ FIELD_MESSAGES = {
     "category": "분류를 골라 주세요.",
     "amount": f"금액은 1원 이상 {AMOUNT_MAX // 10_000:,}만 원 이하의 숫자로 입력해 주세요.",
     "memo": f"메모는 {MEMO_MAX}자 이하로 입력해 주세요.",
+    "note": f"메모를 1~{MEMO_MAX}자로 입력해 주세요 (예: ○○ 9월분).",
+    "kind": "보정 종류를 골라 주세요.",
+    "start": "시작일을 확인해 주세요.",
+    "end": "끝 날짜를 확인해 주세요.",
 }
 
-Month = Annotated[str, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="YYYY-MM", examples=["2026-09"])]
+MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
+Month = Annotated[str, Query(pattern=MONTH_PATTERN, description="YYYY-MM", examples=["2026-09"])]
 
 
 @app.exception_handler(RequestValidationError)
@@ -148,26 +154,40 @@ def settlements(s: DB, _: Owner, month: Month) -> dict:
     return reports.settlements(s, month)
 
 
-@app.get("/api/settlements/{place_id}", summary="정산서: 한 정산처의 월 주문·항목 내역")
-def settlement_detail(s: DB, _: Owner, place_id: int, month: Month) -> dict:
-    detail = reports.settlement_detail(s, place_id, month)
+def invoice_detail(s: Session, place_id: int, month: str | None, start: date | None, end: date | None) -> dict:
+    """정산서 내역: month(한 달) 또는 start~end(직접 고른 기간) 중 하나."""
+    if (month is None) == (start is None and end is None):
+        raise HTTPException(422, "month 또는 start·end 중 하나만 주세요")
+    if month is None and (start is None or end is None):
+        raise HTTPException(422, "시작일과 끝 날짜를 모두 고르세요")
+    if start and end and start > end:
+        raise HTTPException(422, "시작일이 끝 날짜보다 늦습니다")
+    if start and end and (end - start).days >= reports.MAX_INVOICE_DAYS:
+        raise HTTPException(422, f"기간은 {reports.MAX_INVOICE_DAYS}일까지 고를 수 있습니다")
+    detail = reports.settlement_detail(s, place_id, month, start, end)
     if detail is None:
         raise HTTPException(404, "정산처를 찾을 수 없습니다")
     return detail
 
 
+@app.get("/api/settlements/{place_id}", summary="정산서: 한 정산처의 주문·항목 내역 (한 달 또는 직접 고른 기간)")
+def settlement_detail(s: DB, _: Owner, place_id: int, month: Month | None = None,
+                      start: date | None = None, end: date | None = None) -> dict:
+    return invoice_detail(s, place_id, month, start, end)
+
+
 @app.get("/api/settlements/{place_id}/pdf", summary="정산서 PDF 내려받기", response_class=Response,
          responses={200: {"content": {"application/pdf": {}}}})
-def settlement_pdf(s: DB, _: Owner, place_id: int, month: Month) -> Response:
+def settlement_pdf(s: DB, _: Owner, place_id: int, month: Month | None = None,
+                   start: date | None = None, end: date | None = None) -> Response:
     from urllib.parse import quote
 
     from app.invoices import file_name, render
 
-    detail = reports.settlement_detail(s, place_id, month)
-    if detail is None:
-        raise HTTPException(404, "정산처를 찾을 수 없습니다")
+    detail = invoice_detail(s, place_id, month, start, end)
+    when = month or f"{start}_{end}"
     # 한글 파일 이름은 filename*(UTF-8)로, 옛 브라우저용 filename은 영문으로 준다
-    disposition = f"attachment; filename=\"invoice-{month}-{place_id}.pdf\"; filename*=UTF-8''{quote(file_name(detail))}"
+    disposition = f"attachment; filename=\"invoice-{when}-{place_id}.pdf\"; filename*=UTF-8''{quote(file_name(detail))}"
     return Response(render(detail), media_type="application/pdf", headers={"Content-Disposition": disposition})
 
 
@@ -229,6 +249,35 @@ def delete_expense(expense_id: int, s: DB, _: Owner) -> dict:
     x.deleted_at = datetime.now(timezone.utc)
     s.commit()
     return {"id": expense_id, "deleted": True}
+
+
+class AdjustmentBody(BaseModel):
+    month: Annotated[str, Field(pattern=MONTH_PATTERN)]
+    kind: Literal[m.ADJUSTMENT_KINDS]  # type: ignore[valid-type]
+    amount: Annotated[int, Field(strict=True, gt=0, le=AMOUNT_MAX)]
+    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MEMO_MAX)]
+
+
+@app.post("/api/revenue-adjustments", status_code=201,
+          summary="손익 매출 보정 넣기: 다른 메뉴로 찍은 외상 결제(뺌) 또는 정산 앱에서 지운 외상(더함)")
+def add_adjustment(body: AdjustmentBody, s: DB, user: Owner) -> dict:
+    first, _ = reports.month_range(body.month)
+    if first > reports.today_kst():
+        raise HTTPException(422, "앞으로의 달은 보정할 수 없습니다")
+    x = m.RevenueAdjustment(month=first, kind=body.kind, amount=body.amount, memo=body.note, created_by=user.id)
+    s.add(x)
+    s.commit()
+    return {"id": x.id, "month": body.month, "kind": x.kind, "amount": x.amount, "memo": x.memo}
+
+
+@app.delete("/api/revenue-adjustments/{adjustment_id}", summary="보정 지우기 (기록은 남기고 손익에서 뺀다)")
+def delete_adjustment(adjustment_id: int, s: DB, _: Owner) -> dict:
+    x = s.get(m.RevenueAdjustment, adjustment_id)
+    if x is None or x.deleted_at is not None:
+        raise HTTPException(404, "보정을 찾을 수 없습니다")
+    x.deleted_at = datetime.now(timezone.utc)
+    s.commit()
+    return {"id": adjustment_id, "deleted": True}
 
 
 @app.get("/api/profit", summary="월 손익 요약: 매출(홀 매출 + 외상 정산) − 비용(지출 + 발주 + 인건비)")

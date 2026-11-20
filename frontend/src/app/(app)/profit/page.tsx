@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api, fetcher, type Expense, type ExpenseCategory, type Expenses, type Profit } from "@/lib/api";
+import { api, fetcher, type Expense, type ExpenseCategory, type Expenses, type Profit, type AdjustmentKind } from "@/lib/api";
 import { md, monthLabel, todayKst, won } from "@/lib/format";
 import { EXPENSE_CATEGORY } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -74,6 +74,11 @@ export default function ProfitPage() {
   );
 }
 
+/** 보정 메모를 이어 붙인다 (매출 화면에서 넣은 것) */
+function adjustmentNotes(p: Profit, kind: AdjustmentKind) {
+  return p.adjustments.filter((a) => a.kind === kind).map((a) => a.memo).join(" · ");
+}
+
 function Summary({ p }: { p: Profit }) {
   const costRows: [string, number, string?][] = [
     ...CATEGORIES.map((c) => [EXPENSE_CATEGORY[c], p.costs[c], "직접 입력"] as [string, number, string]),
@@ -85,9 +90,15 @@ function Summary({ p }: { p: Profit }) {
     ["홀 매출 (POS)", p.revenue.pos == null ? "올리기 전" : won(p.revenue.pos), posBasis, p.revenue.pos == null],
     ...(p.pos_connected
       ? [["POS에 찍은 외상", p.revenue.pos_credit == null ? "-" : `−${won(p.revenue.pos_credit)}`,
-          "주문확인용. 아래 외상 정산과 같은 돈이라 뺀다", p.revenue.pos_credit == null] as [string, string, string, boolean]]
+          "주문확인용. 거래처가 낸 지난 외상값이라 뺀다", p.revenue.pos_credit == null] as [string, string, string, boolean]]
+      : []),
+    ...(p.revenue.credit_paid_other
+      ? [["다른 메뉴로 찍은 외상 결제", `−${won(p.revenue.credit_paid_other)}`, adjustmentNotes(p, "credit_paid")] as [string, string, string]]
       : []),
     ["외상 정산", won(p.revenue.credit), "정산처 식대, 달력 기준"],
+    ...(p.revenue.credit_missing
+      ? [["정산 앱에서 지운 외상", `+${won(p.revenue.credit_missing)}`, adjustmentNotes(p, "credit_missing")] as [string, string, string]]
+      : []),
   ];
   const loss = p.profit < 0;
   const today = todayKst();
@@ -95,7 +106,7 @@ function Summary({ p }: { p: Profit }) {
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Stat title="매출" value={won(p.revenue_total)} foot={p.pos_connected ? "홀 매출(POS) + 외상 정산" : "외상 정산만 (홀 매출 올리기 전)"} />
+        <Stat title="매출" value={won(p.revenue_total)} foot={(p.pos_connected ? "홀 매출(POS) + 외상 정산" : "외상 정산만 (홀 매출 올리기 전)") + (p.adjustments.length ? " ± 보정" : "")} />
         <Stat title="비용" value={won(p.cost_total)} foot={`지출 ${p.expense_count}건 · 발주 · 인건비`} />
         <Stat
           title="손익"

@@ -69,6 +69,39 @@ test("정산서를 PDF로 내려받는다", async ({ page }) => {
   expect(file.subarray(0, 5).toString()).toBe("%PDF-");
 });
 
+test("정산서: 기간을 직접 골라 다음 달 며칠까지 묶어 본다", async ({ page }) => {
+  await demoLogin(page);
+  await page.getByRole("link", { name: "정산", exact: true }).first().click();
+  await page.locator("button[aria-pressed]").first().click();
+  const invoice = page.locator("[data-slot=card]").filter({ hasText: "정산서" }).last();
+  await invoice.getByRole("button", { name: "기간" }).click();
+
+  const start = await invoice.getByLabel("시작일").inputValue(); // 그달 1일
+  const [y, m] = start.split("-").map(Number);
+  const next = `${m === 12 ? y + 1 : y}-${String((m % 12) + 1).padStart(2, "0")}`;
+  // 끝 날짜가 비어 있거나 시작보다 이르면 막는다
+  await invoice.getByRole("button", { name: "이 기간으로 보기" }).click();
+  await expect(invoice.getByRole("alert")).toContainText("모두 고르세요");
+
+  await invoice.getByLabel("끝 날짜 (포함)").fill(`${next}-02`);
+  await invoice.getByRole("button", { name: "이 기간으로 보기" }).click();
+  await expect(page.getByTestId("invoice-period")).toContainText(`직접 고른 기간 (${m}/1 ~ ${(m % 12) + 1}/2)`);
+
+  // 합계 = 항목 합, 그리고 API의 한 달 + 다음 달 이틀과 같다
+  const card = page.locator("[data-slot=card]").filter({ has: page.getByTestId("invoice-period") });
+  const total = toNumber(await card.locator("tfoot td").last().innerText());
+  const lines = await card.locator("tbody tr td:last-child").allInnerTexts();
+  expect(lines.reduce((s, t) => s + toNumber(t), 0)).toBe(total);
+
+  const pdf = card.getByRole("link", { name: "PDF" });
+  const id = (await pdf.getAttribute("href"))!.match(/settlements\/(\d+)\//)![1];
+  const get = async (q: string) => (await (await page.request.get(`/api/settlements/${id}?${q}`)).json()).total;
+  expect(total).toBe((await get(`month=${start.slice(0, 7)}`)) + (await get(`start=${next}-01&end=${next}-02`)));
+
+  const [download] = await Promise.all([page.waitForEvent("download"), pdf.click()]);
+  expect(download.suggestedFilename()).toMatch(new RegExp(`^${start}~${next}-02 .+ 정산서\\.pdf$`));
+});
+
 test("인건비 화면에 기본급·주휴수당과 규칙 설명이 보인다", async ({ page }) => {
   await demoLogin(page);
   await page.getByRole("link", { name: "인건비", exact: true }).first().click();
@@ -208,10 +241,57 @@ test("매출: POS 엑셀을 미리 보고 넣으면 매출과 손익에 들어�
   await page.getByRole("button", { name: /넣기$/ }).click();
   await expect(page.getByRole("status").filter({ hasText: "합계" })).toContainText("같습니다 (2,984,500원)");
 
+  // 지난 실행이 남긴 보정이 있으면 지우고 본다 (공개 데모를 함께 쓴다)
+  const before = await (await page.request.get("/api/pos/sales?month=2020-01")).json();
+  for (const a of before.adjustments) await page.request.delete(`/api/revenue-adjustments/${a.id}`);
+
   // 손익 매출 = POS 실매출 − 주문확인용 + 외상 정산
-  const p = await (await page.request.get("/api/profit?month=2020-01")).json();
-  expect(p.revenue).toEqual({ credit: 0, pos: 2984500, pos_credit: 524500 });
+  const profit = async () => (await page.request.get("/api/profit?month=2020-01")).json();
+  const p = await profit();
+  expect(p.revenue).toEqual({ credit: 0, pos: 2984500, pos_credit: 524500, credit_paid_other: null, credit_missing: null });
   expect(p.revenue_total).toBe(2984500 - 524500);
+
+  // 외상 보정: 다른 메뉴로 찍은 외상 결제는 POS 자료가 있는 달에서 빼고, 지우면 돌아온다
+  const r = await page.request.post("/api/revenue-adjustments", {
+    data: { month: "2020-01", kind: "credit_paid", amount: 100000, note: "E2E 거래처 12월분, 물냉면으로 찍음" },
+  });
+  expect(r.status()).toBe(201);
+  expect((await profit()).revenue_total).toBe(2984500 - 524500 - 100000);
+  expect((await page.request.delete(`/api/revenue-adjustments/${(await r.json()).id}`)).status()).toBe(200);
+  expect((await profit()).revenue_total).toBe(2984500 - 524500);
+});
+
+test("매출: 이달 외상 보정을 화면에서 넣고 지운다", async ({ page }) => {
+  await demoLogin(page);
+  await page.goto("/sales");
+  const month = (await (await page.request.get("/api/home")).json()).today.slice(0, 7);
+  const profit = async () => (await (await page.request.get(`/api/profit?month=${month}`)).json()).revenue_total;
+  const base = await profit();
+
+  const form = page.getByRole("form", { name: "외상 보정 넣기" });
+  await form.getByLabel(/정산 앱에서 지운 외상/).check();
+  await form.getByLabel("금액 (원)").fill("12,300");
+  await form.getByLabel("메모").fill("E2E 거래처 지운 주문");
+  await form.getByRole("button", { name: "보정 추가" }).click();
+  const list = page.getByRole("list", { name: "외상 보정 목록" });
+  await expect(list).toContainText("E2E 거래처 지운 주문");
+  await expect(list).toContainText("+12,300원");
+  expect(await profit()).toBe(base + 12300);
+
+  page.once("dialog", (d) => d.accept());
+  await list.getByRole("button", { name: "E2E 거래처 지운 주문 보정 지우기" }).click();
+  await expect(page.getByRole("list", { name: "외상 보정 목록" })).toHaveCount(0);
+  expect(await profit()).toBe(base);
+});
+
+test("매출: 외상 보정은 메모가 없으면 넣지 않는다", async ({ page }) => {
+  await demoLogin(page);
+  await page.goto("/sales");
+  const form = page.getByRole("form", { name: "외상 보정 넣기" });
+  await form.getByLabel("금액 (원)").fill("5000");
+  await form.getByLabel("메모").fill("   ");
+  await form.getByRole("button", { name: "보정 추가" }).click();
+  await expect(form.locator("p[role=alert]")).toContainText("메모");
 });
 
 test("매출: POS 엑셀이 아니면 넣지 않고 이유를 보여 준다", async ({ page }) => {
