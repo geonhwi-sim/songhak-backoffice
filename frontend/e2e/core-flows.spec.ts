@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 
@@ -172,6 +173,53 @@ test("손익: 잘못된 금액은 막고 이유를 보여 준다", async ({ page
   await form.getByLabel("금액 (원)").fill("0");
   await form.getByRole("button", { name: "추가" }).click();
   await expect(form.getByRole("alert")).toContainText("금액");
+});
+
+// 테스트용 POS 엑셀 (가짜 숫자, 2020년 1월): backend 폴더에서 python -m tests.pos_files ../frontend/e2e/fixtures로 만든다
+const fixture = (name: string) => path.join(__dirname, "fixtures", name);
+const DAILY_FILE = fixture("POS정산내역_202001.xlsx");
+const MENU_FILE = fixture("상품ABC분석_202001.xlsx");
+
+test("매출: 데모 지난달은 일별 합계와 메뉴별 합계가 맞는다", async ({ page }) => {
+  await demoLogin(page);
+  await page.getByRole("link", { name: "매출", exact: true }).first().click();
+  await page.getByRole("button", { name: "이전 달" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "합계" })).toContainText("같습니다");
+  await expect(page.getByRole("list", { name: "일별 매출" }).getByRole("listitem").first()).toBeVisible();
+  await expect(page.getByText("외상 · 손익에서 뺌")).toBeVisible();
+});
+
+test("매출: POS 엑셀을 미리 보고 넣으면 매출과 손익에 들어간다", async ({ page }) => {
+  await demoLogin(page);
+  await page.goto("/sales");
+  const file = page.getByLabel("엑셀 파일 (.xlsx)");
+
+  // 공개 데모를 함께 쓰므로 데모 데이터와 겹치지 않는 2020년 1월로 올린다 (다시 돌리면 '바꿔 넣기')
+  await file.setInputFiles(DAILY_FILE);
+  const preview = page.getByLabel("미리보기");
+  await expect(preview).toContainText("POS정산내역");
+  await expect(preview).toContainText("2,984,500원");
+  await page.getByRole("button", { name: /넣기$/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: "넣었습니다" })).toBeVisible();
+  await expect(page.getByTestId("pos-net")).toHaveText("2,984,500원"); // 올린 달(2020년 1월)로 옮겨 간다
+
+  await file.setInputFiles(MENU_FILE);
+  await expect(preview).toContainText("주문확인용");
+  await page.getByRole("button", { name: /넣기$/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: "합계" })).toContainText("같습니다 (2,984,500원)");
+
+  // 손익 매출 = POS 실매출 − 주문확인용 + 외상 정산
+  const p = await (await page.request.get("/api/profit?month=2020-01")).json();
+  expect(p.revenue).toEqual({ credit: 0, pos: 2984500, pos_credit: 524500 });
+  expect(p.revenue_total).toBe(2984500 - 524500);
+});
+
+test("매출: POS 엑셀이 아니면 넣지 않고 이유를 보여 준다", async ({ page }) => {
+  await demoLogin(page);
+  await page.goto("/sales");
+  await page.getByLabel("엑셀 파일 (.xlsx)").setInputFiles({ name: "메모.xlsx", mimeType: "text/plain", buffer: Buffer.from("hello") });
+  await expect(page.locator("p[role=alert]")).toContainText("xlsx");
+  await expect(page.getByRole("button", { name: /넣기$/ })).toHaveCount(0);
 });
 
 test("동기화: 원본 앱별 마지막 성공과 기록이 보인다", async ({ page }) => {

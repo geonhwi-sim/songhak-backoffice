@@ -337,6 +337,63 @@ class Expense(Base):
     deleted_at: Mapped[datetime | None]
 
 
+# ── 홀 매출 (OK POS 엑셀) ──
+# 사장님이 POS 웹 관리자에서 내려받은 엑셀을 화면에서 올린다 (app/pos_import.py).
+# 같은 기간을 다시 올리면 그 기간 자료를 바꾸고, 올린 기록은 pos_imports에 남긴다.
+
+
+class PosImport(Base):
+    __tablename__ = "pos_imports"
+    __table_args__ = (
+        CheckConstraint("kind IN ('daily', 'menu')", name="kind"),
+        CheckConstraint("period_start <= period_end", name="period"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(8))  # daily = POS정산내역, menu = 상품 ABC 분석
+    period_start: Mapped[date]
+    period_end: Mapped[date]
+    file_name: Mapped[str | None] = mapped_column(Text)
+    rows: Mapped[int]
+    net_total: Mapped[int]
+    imported_by: Mapped[int | None] = mapped_column(ForeignKey("app_users.id"))
+    imported_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class PosDailySale(Base):
+    """영업일·포스별 하루 마감. 실매출(net)이 매출이다. 외상 거래처 주문(주문확인용)도 여기에 들어 있다."""
+
+    __tablename__ = "pos_daily_sales"
+    __table_args__ = (UniqueConstraint("business_date", "pos_no"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_date: Mapped[date]
+    pos_no: Mapped[str] = mapped_column(String(8))
+    gross: Mapped[int]  # 총매출액
+    discount: Mapped[int]  # 총할인액
+    net: Mapped[int]  # 실매출액
+    cash: Mapped[int]  # 현금매출액
+    closed_at: Mapped[datetime | None]  # 마감 등록 시각
+    import_id: Mapped[int] = mapped_column(ForeignKey("pos_imports.id"))
+
+
+class PosMenuSale(Base):
+    """기간(보통 한 달) 동안 메뉴별 실매출·판매수량. 기간이 겹치는 자료는 두지 않는다 (올릴 때 지운다)."""
+
+    __tablename__ = "pos_menu_sales"
+    __table_args__ = (
+        UniqueConstraint("period_start", "period_end", "code"),
+        CheckConstraint("period_start <= period_end", name="period"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    period_start: Mapped[date]
+    period_end: Mapped[date]
+    category: Mapped[str | None] = mapped_column(Text)  # POS 대분류
+    code: Mapped[str] = mapped_column(String(32))  # POS 상품코드
+    name: Mapped[str] = mapped_column(Text)
+    net: Mapped[int]
+    qty: Mapped[int]
+    import_id: Mapped[int] = mapped_column(ForeignKey("pos_imports.id"))
+
+
 # ── 기타 · 운영 ──
 
 

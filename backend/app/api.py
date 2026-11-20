@@ -14,7 +14,7 @@ from functools import lru_cache
 from threading import Lock
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -231,9 +231,72 @@ def delete_expense(expense_id: int, s: DB, _: Owner) -> dict:
     return {"id": expense_id, "deleted": True}
 
 
-@app.get("/api/profit", summary="월 손익 요약: 매출(외상 정산) − 비용(지출 + 발주 + 인건비)")
+@app.get("/api/profit", summary="월 손익 요약: 매출(홀 매출 + 외상 정산) − 비용(지출 + 발주 + 인건비)")
 def profit(s: DB, _: Owner, month: Month) -> dict:
     return reports.profit(s, month)
+
+
+# ── 홀 매출: OK POS 엑셀 (사장님) ──
+# 파일은 multipart가 아니라 본문 그대로 받는다 (새 의존성 없이). Content-Type을 엑셀로 정해 둬서
+# 다른 사이트의 폼으로는 보낼 수 없다 (폼이 쓸 수 있는 형식이 아니다). 쿠키도 SameSite=lax다.
+XLSX_TYPES = {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"}
+
+
+async def xlsx_body(request: Request) -> bytes:
+    from app.pos_import import MAX_UPLOAD
+
+    ctype = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if ctype not in XLSX_TYPES:
+        raise HTTPException(415, "엑셀(.xlsx) 파일을 올려 주세요.")
+    too_big = HTTPException(413, f"파일은 {MAX_UPLOAD // 1_000_000}MB까지 올릴 수 있습니다.")
+    length = request.headers.get("content-length", "")
+    if length.isdigit() and int(length) > MAX_UPLOAD:
+        raise too_big
+    data = bytearray()
+    async for chunk in request.stream():
+        data += chunk
+        if len(data) > MAX_UPLOAD:
+            raise too_big
+    if not data:
+        raise HTTPException(422, "빈 파일입니다.")
+    return bytes(data)
+
+
+def parse_pos(data: bytes):
+    from app.pos_import import PosFileError, parse
+
+    try:
+        return parse(data)
+    except PosFileError as e:
+        raise HTTPException(422, str(e)) from None
+
+
+def file_name(request: Request) -> str | None:
+    from urllib.parse import unquote
+
+    name = unquote(request.headers.get("x-file-name", "")).strip()[:200]  # 한글 이름은 화면이 URL 인코딩해 보낸다
+    return name or None
+
+
+@app.get("/api/pos/sales", summary="한 달의 홀 매출: 일별 실매출, 메뉴별 매출, 두 파일 대조, 최근 올린 기록")
+def pos_sales(s: DB, _: Owner, month: Month) -> dict:
+    return reports.pos_sales(s, month)
+
+
+@app.post("/api/pos/preview", summary="POS 엑셀 미리보기: 무엇이 들어가고 무엇이 바뀌는지 (DB는 그대로)")
+def pos_preview(_: Owner, s: DB, data: Annotated[bytes, Depends(xlsx_body)]) -> dict:
+    from app.pos_import import summary
+
+    return summary(s, parse_pos(data))
+
+
+@app.post("/api/pos/import", status_code=201, summary="POS 엑셀 넣기: 같은 기간 자료를 바꾼다")
+def pos_import(user: Owner, s: DB, request: Request, data: Annotated[bytes, Depends(xlsx_body)]) -> dict:
+    from app.pos_import import apply
+
+    out = apply(s, parse_pos(data), user.id, file_name(request))
+    s.commit()
+    return out
 
 
 class AskBody(BaseModel):

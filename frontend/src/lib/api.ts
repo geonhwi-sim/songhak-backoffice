@@ -188,11 +188,85 @@ export type Profit = {
   end: string;
   pay_start: string;
   pay_end: string;
-  revenue: { credit: number; pos: number | null };
+  // 매출 = POS 실매출 − POS에 찍은 외상(주문확인용, pos_credit) + 외상 정산
+  revenue: { credit: number; pos: number | null; pos_credit: number | null };
   revenue_total: number;
   costs: Record<ExpenseCategory, number> & { supply_app: number; labor: number };
   cost_total: number;
   profit: number;
   expense_count: number;
   pos_connected: boolean;
+  pos_days: number;
+  pos_last_date: string | null;
+  pos_menu_until: string | null;
+  /** 일별 POS 자료가 메뉴별 자료보다 뒤까지 있어 그 사이 외상을 못 뺐다 */
+  credit_unchecked: boolean;
 };
+
+// ── 홀 매출 (OK POS 엑셀) ──
+
+export type PosKind = "daily" | "menu";
+
+export type PosImport = {
+  id: number;
+  kind: PosKind;
+  start: string;
+  end: string;
+  file_name: string | null;
+  rows: number;
+  net_total: number;
+  imported_at: string;
+};
+
+export type PosMenuItem = { code: string; name: string; category: string | null; net: number; qty: number; is_credit: boolean };
+
+export type PosSales = {
+  month: string;
+  start: string;
+  end: string;
+  days: { date: string; net: number; gross: number; discount: number; cash: number }[];
+  day_count: number;
+  net_total: number;
+  cash_total: number;
+  last_date: string | null;
+  menu: PosMenuItem[];
+  menu_net_total: number;
+  menu_periods: { start: string; end: string }[];
+  menu_until: string | null;
+  credit_item: number;
+  checks: { start: string; end: string; menu_net: number; daily_net: number; match: boolean }[];
+  imports: PosImport[];
+};
+
+/** 미리보기·넣기 결과 (backend app/pos_import.py summary) */
+export type PosPreview = {
+  kind: PosKind;
+  start: string;
+  end: string;
+  rows: number;
+  net_total: number;
+  warnings: string[];
+  replaces: { rows: number; net_total: number; periods?: { start: string; end: string; rows: number; net_total: number }[] };
+  // daily
+  days?: number;
+  first?: string;
+  last?: string;
+  gross_total?: number;
+  discount_total?: number;
+  cash_total?: number;
+  // menu
+  qty_total?: number;
+  credit_total?: number;
+  top?: { name: string; net: number; qty: number }[];
+  import_id?: number;
+};
+
+export const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/** 엑셀 파일을 본문 그대로 보낸다 (backend api.py xlsx_body) */
+export const uploadPos = (path: "/api/pos/preview" | "/api/pos/import", file: File) =>
+  api<PosPreview>(path, {
+    method: "POST",
+    body: file,
+    headers: { "Content-Type": XLSX_MIME, "X-File-Name": encodeURIComponent(file.name) },
+  });

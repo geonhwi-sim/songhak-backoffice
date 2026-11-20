@@ -95,6 +95,9 @@ CARDS = [("사업자 카드", "4821"), ("법인 체크카드", "1937")]
 MARKETS = [("가락시장 청과", (40, 160)), ("동네 정육점", (60, 220)), ("한빛 식자재마트", (30, 120))]
 MONTHLY = [("상가 임대료", "rent", 1, (1800, 1800)), ("도시가스", "utilities", 20, (180, 320)),
            ("한국전력", "utilities", 22, (240, 420)), ("주방 소모품 도매", "supplies", 10, (60, 140))]
+# 홀 매출(POS): 메뉴는 MENUS와 같은 가격으로 팔고, 술·음료를 더한다 (이름, POS 대분류, 가격, 하루 판매 수량 범위)
+POS_DRINKS = [("소주", "주류", 5000, (6, 30)), ("맥주", "주류", 5000, (4, 24)), ("음료", "음료", 2000, (3, 15))]
+POS_CREDIT = ("900001", "주문확인용", "외상")  # 외상 거래처 주문을 POS에 찍는 품목 (실제 가게와 같은 방식)
 
 
 @dataclass
@@ -187,6 +190,7 @@ def seed(s: Session, until: date) -> dict:
         opts_by_menu.setdefault(mn, []).append((o, x))
 
     orders = deleted = 0
+    credit_by_day: dict[date, tuple[int, int]] = {}  # 날짜 → (외상 금액, 주문 수). POS에 '주문확인용'으로 찍힌다
     for d in days(START, until):
         if not is_open(d):
             continue
@@ -233,6 +237,9 @@ def seed(s: Session, until: date) -> dict:
             s.add(order)
             orders += 1
             deleted += gone
+            if not gone:
+                amt, n = credit_by_day.get(d, (0, 0))
+                credit_by_day[d] = (amt + sum(ln["qty"] * ln["unit_price"] for ln in lines), n + 1)
     s.flush()
 
     # ── 인건비 ──
@@ -336,6 +343,51 @@ def seed(s: Session, until: date) -> dict:
                 expenses += 1
         month = (month + timedelta(days=32)).replace(day=1)
 
+    # ── 홀 매출 (POS 엑셀을 올린 것처럼) ──
+    # 일별 마감과 메뉴별 매출을 같은 판매에서 만들어 두 파일의 합계가 맞는다. 오늘은 아직 마감 전이라 어제까지.
+    rng = random.Random(f"{SEED}-pos")
+    hall = [(f"{i + 1:06d}", name, f"{cat} 메뉴", None, None) for i, (name, cat, *_) in enumerate(MENUS)]
+    hall += [(f"{800001 + i:06d}", name, cat, price, qty) for i, (name, cat, price, qty) in enumerate(POS_DRINKS)]
+    weight = {name: w for name, *_, w in MENUS}
+    pos_until = until - timedelta(days=1)
+    by_month: dict[date, dict] = {}
+    for d in days(START, pos_until):
+        sold = []
+        for code, name, cat, price, qty in hall:  # 쉬는 날에도 같은 개수를 뽑는다 (난수가 밀리지 않게)
+            n = rng.randint(*qty) if qty else rng.randint(0, weight[name] * 2)
+            sold.append((code, name, cat, price or price_at(name, d), n))
+        discount = rng.choice([0, 0, 0, 0, 5000, 10000])
+        cash_rate = rng.uniform(0.05, 0.2)
+        minute = rng.randint(0, 59)
+        if not is_open(d):
+            continue
+        credit, credit_orders = credit_by_day.get(d, (0, 0))
+        hall_net = sum(p * n for *_, p, n in sold)
+        net = hall_net + credit
+        mon = by_month.setdefault(d.replace(day=1), {"days": [], "menu": {}})
+        mon["days"].append(m.PosDailySale(business_date=d, pos_no="01", gross=net + discount, discount=discount,
+                                          net=net, cash=int(round(hall_net * cash_rate, -3)),
+                                          closed_at=at(d, 21, minute)))
+        for code, name, cat, p, n in sold + [(POS_CREDIT[0], POS_CREDIT[1], POS_CREDIT[2], None, credit_orders)]:
+            row = mon["menu"].setdefault(code, {"code": code, "name": name, "category": cat, "net": 0, "qty": 0})
+            row["net"] += credit if code == POS_CREDIT[0] else p * n
+            row["qty"] += n
+    pos_days = 0
+    for first, mon in by_month.items():
+        last = min(pos_until, (first + timedelta(days=32)).replace(day=1) - timedelta(days=1))
+        net = sum(x.net for x in mon["days"])
+        daily = m.PosImport(kind="daily", period_start=first, period_end=last, file_name=f"POS정산내역_{first:%Y%m}.xlsx",
+                            rows=len(mon["days"]), net_total=net, imported_at=at(last + timedelta(days=1), 5))
+        menu = m.PosImport(kind="menu", period_start=first, period_end=last, file_name=f"상품ABC분석_{first:%Y%m}.xlsx",
+                           rows=len(mon["menu"]), net_total=net, imported_at=at(last + timedelta(days=1), 5, 1))
+        s.add_all([daily, menu])
+        s.flush()
+        for x in mon["days"]:
+            x.import_id = daily.id
+        s.add_all(mon["days"])
+        s.add_all(m.PosMenuSale(period_start=first, period_end=last, import_id=menu.id, **x) for x in mon["menu"].values())
+        pos_days += len(mon["days"])
+
     # ── 기타 ──
     s.add_all(m.DayMemo(memo_date=d, body=b) for d, b in MEMOS.items() if d <= until)
     done_at = at(until, 5)
@@ -358,7 +410,7 @@ def seed(s: Session, until: date) -> dict:
 
     return {"until": until.isoformat(), "sales_orders": orders, "deleted_orders": deleted, "work_logs": logs,
             "payroll_periods": periods, "supply_orders": supply_orders, "supply_payments": paid,
-            "expenses": expenses}
+            "expenses": expenses, "pos_days": pos_days}
 
 
 def main(argv: list[str] | None = None) -> None:

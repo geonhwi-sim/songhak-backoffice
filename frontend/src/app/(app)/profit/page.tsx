@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import useSWR from "swr";
 import { CircleAlert, Trash2 } from "lucide-react";
@@ -33,7 +34,7 @@ export default function ProfitPage() {
 
   return (
     <>
-      <PageHeader title="손익" description="한 달 매출에서 지출·발주·인건비를 뺀 금액입니다.">
+      <PageHeader title="손익" description="한 달 매출(홀 매출 + 외상 정산)에서 지출·발주·인건비를 뺀 금액입니다.">
         <MonthPicker value={month} onChange={setMonth} />
       </PageHeader>
 
@@ -79,13 +80,22 @@ function Summary({ p }: { p: Profit }) {
     ["발주 앱", p.costs.supply_app, "결제 금액, 없으면 예상 금액"],
     ["인건비", p.costs.labor, `급여 기간 ${md(p.pay_start)}~${md(p.pay_end)}`],
   ];
+  const posBasis = p.pos_last_date ? `POS 실매출 ${p.pos_days}일 · ${md(p.pos_last_date)}까지` : "매출 화면에서 POS 엑셀 올리기";
+  const revenueRows: [string, string, string, boolean?][] = [
+    ["홀 매출 (POS)", p.revenue.pos == null ? "올리기 전" : won(p.revenue.pos), posBasis, p.revenue.pos == null],
+    ...(p.pos_connected
+      ? [["POS에 찍은 외상", p.revenue.pos_credit == null ? "-" : `−${won(p.revenue.pos_credit)}`,
+          "주문확인용. 아래 외상 정산과 같은 돈이라 뺀다", p.revenue.pos_credit == null] as [string, string, string, boolean]]
+      : []),
+    ["외상 정산", won(p.revenue.credit), "정산처 식대, 달력 기준"],
+  ];
   const loss = p.profit < 0;
   const today = todayKst();
   const inProgress = p.start <= today && today <= p.end;
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Stat title="매출" value={won(p.revenue_total)} foot={p.pos_connected ? "외상 정산 + 홀 매출" : "외상 정산만 (홀 매출 연결 전)"} />
+        <Stat title="매출" value={won(p.revenue_total)} foot={p.pos_connected ? "홀 매출(POS) + 외상 정산" : "외상 정산만 (홀 매출 올리기 전)"} />
         <Stat title="비용" value={won(p.cost_total)} foot={`지출 ${p.expense_count}건 · 발주 · 인건비`} />
         <Stat
           title="손익"
@@ -96,7 +106,7 @@ function Summary({ p }: { p: Profit }) {
         />
       </div>
 
-      {(!p.pos_connected || inProgress) && (
+      {(!p.pos_connected || p.credit_unchecked || inProgress) && (
         <div className="grid gap-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           {inProgress && (
             <p className="flex items-start gap-1.5">
@@ -107,7 +117,22 @@ function Summary({ p }: { p: Profit }) {
           {!p.pos_connected && (
             <p className="flex items-start gap-1.5">
               <CircleAlert className="mt-px size-3.5 shrink-0" />
-              홀 매출(POS)은 아직 연결 전이라 매출에 빠져 있습니다. 지금 손익은 외상 정산만 기준으로 한 값입니다.
+              <span>
+                이 달 홀 매출(POS)을 아직 올리지 않아 매출에 빠져 있습니다. 지금 손익은 외상 정산만 기준으로 한 값입니다.{" "}
+                <Link href="/sales" className="underline underline-offset-2">매출 화면에서 올리기</Link>
+              </span>
+            </p>
+          )}
+          {p.credit_unchecked && (
+            <p className="flex items-start gap-1.5">
+              <CircleAlert className="mt-px size-3.5 shrink-0" />
+              <span>
+                {p.pos_menu_until
+                  ? `메뉴별 자료(상품 ABC 분석)가 ${md(p.pos_menu_until)}까지라, 그 뒤 POS에 찍은 외상(주문확인용)은 빼지 못했습니다.`
+                  : "메뉴별 자료(상품 ABC 분석)가 없어 POS에 찍은 외상(주문확인용)을 빼지 못했습니다."}{" "}
+                외상 정산과 겹쳐 매출이 그만큼 크게 잡혔을 수 있습니다.{" "}
+                <Link href="/sales" className="underline underline-offset-2">매출 화면에서 올리기</Link>
+              </span>
             </p>
           )}
         </div>
@@ -131,22 +156,16 @@ function Summary({ p }: { p: Profit }) {
             </TableHeader>
             <TableBody>
               <GroupRow label="매출" amount={p.revenue_total} />
-              <TableRow>
-                <TableCell className="pl-6">
-                  외상 정산<Basis mobile>정산처 식대, 달력 기준</Basis>
-                </TableCell>
-                <Basis>정산처 식대, 달력 기준</Basis>
-                <TableCell className="text-right tabular-nums">{won(p.revenue.credit)}</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell className="pl-6">
-                  홀 매출 (POS)<Basis mobile>엑셀 올리기 준비 중</Basis>
-                </TableCell>
-                <Basis>엑셀 올리기 준비 중</Basis>
-                <TableCell className="text-right text-muted-foreground tabular-nums">
-                  {p.revenue.pos == null ? "연결 전" : won(p.revenue.pos)}
-                </TableCell>
-              </TableRow>
+              {revenueRows.map(([label, value, basis, muted]) => (
+                <TableRow key={label}>
+                  <TableCell className="pl-6">
+                    {label}
+                    <Basis mobile>{basis}</Basis>
+                  </TableCell>
+                  <Basis>{basis}</Basis>
+                  <TableCell className={cn("text-right tabular-nums", muted && "text-muted-foreground")}>{value}</TableCell>
+                </TableRow>
+              ))}
               <GroupRow label="비용" amount={p.cost_total} />
               {costRows.map(([label, amount, basis]) => (
                 <TableRow key={label}>

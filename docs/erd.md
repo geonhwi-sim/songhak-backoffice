@@ -152,6 +152,19 @@ erDiagram
 - 원본 앱이 없는 표다. 식재료는 대부분 매장·도매상에서 직접 사 와서 발주 앱에 남지 않으므로 백오피스에서 입력한다. 나중에 영수증 사진에서 뽑은 값도 `source = 'receipt'`로 같은 표에 넣는다.
 - 잘못 넣은 건은 지우지 않고 `deleted_at`을 채운다. 목록·합계·`qa.expenses` 뷰는 지운 건을 뺀다.
 
+### 홀 매출 · OK POS 엑셀 (2026-11-17)
+
+| 테이블 | 컬럼 |
+|---|---|
+| pos_imports | id, kind ('daily' \| 'menu'), period_start, period_end (check start ≤ end), file_name, rows, net_total, imported_by → app_users null, imported_at |
+| pos_daily_sales | id, business_date, pos_no, gross, discount, net, cash, closed_at null, import_id → pos_imports, unique (business_date, pos_no) |
+| pos_menu_sales | id, period_start, period_end, category, code, name, net, qty, import_id → pos_imports, unique (period_start, period_end, code) |
+
+- 원본 앱이 없는 표다. 사장님이 OK POS 웹 관리자에서 내려받은 'POS정산내역'(일별)과 '상품 ABC 분석'(메뉴별)을 화면에서 올린다.
+- 같은 기간을 다시 올리면 그 기간 자료를 지우고 새로 넣는다. 메뉴별 자료는 기간이 겹치는 것도 지운다 (겹친 채로 두면 같은 판매를 두 번 센다). 올린 기록은 `pos_imports`에 모두 남는다.
+- 외상 거래처 주문은 POS에 '주문확인용' 품목으로 찍는다. 정산 앱의 외상과 같은 돈이라 손익에서 한 번 뺀다.
+- 자연어 질의 뷰(qa)는 아직 열지 않았다. "매출"의 뜻이 외상 정산에서 바뀌므로 평가를 다시 돌린 뒤 연다.
+
 ### 기타 · 운영
 
 | 테이블 | 컬럼 |

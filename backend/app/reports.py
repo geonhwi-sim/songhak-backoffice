@@ -4,6 +4,7 @@
 - 급여 기간: 전월 17일 ~ 당월 16일 (app/payroll.py)
 - 발주 비용: 결제 금액이 있으면 그 값, 없으면 단가표 기준 예상 금액
 - 지출: 백오피스에서 직접 입력한 돈 (매장·도매상 장보기, 공과금). 손익 = 매출 − (지출 + 발주 + 인건비)
+- 홀 매출: OK POS 엑셀에서 올린 일별 실매출 (app/pos_import.py). 매출 = POS − POS에 찍은 외상 + 외상 정산
 - 날짜는 한국 시간 기준
 """
 
@@ -187,10 +188,70 @@ def expenses(session: Session, month: str) -> dict:
     }
 
 
+def pos_sales(session: Session, month: str) -> dict:
+    """한 달(달력 기준)의 홀 매출 (OK POS 엑셀에서 올린 것).
+
+    - 일별: 영업일마다 포스를 합친 실매출. 올린 날까지만 있다.
+    - 메뉴별: 기간이 그 달 안에 있는 상품 분석 자료를 메뉴(상품코드)별로 더한다. 기간은 겹치지 않게 저장된다.
+    - 대조: 메뉴 자료의 기간마다 일별 실매출 합과 메뉴 실매출 합이 같은지 본다 (두 파일이 같은 POS 숫자인지).
+    - credit_item: 외상 거래처 주문을 찍은 '주문확인용' 품목 금액. 정산 앱의 외상과 같은 돈이다.
+    """
+    from app.pos_import import CREDIT_ITEMS
+
+    start, end = month_range(month)
+    d = m.PosDailySale
+    days = [
+        {"date": day, "net": int(net), "gross": int(gross), "discount": int(disc), "cash": int(cash)}
+        for day, net, gross, disc, cash in session.execute(
+            select(d.business_date, func.sum(d.net), func.sum(d.gross), func.sum(d.discount), func.sum(d.cash))
+            .where(d.business_date.between(start, end)).group_by(d.business_date).order_by(d.business_date))
+    ]
+
+    t = m.PosMenuSale
+    in_month = (t.period_start >= start, t.period_end <= end)
+    periods = session.execute(
+        select(t.period_start, t.period_end, func.sum(t.net)).where(*in_month)
+        .group_by(t.period_start, t.period_end).order_by(t.period_start)).all()
+    items: dict[str, dict] = {}
+    for x in session.scalars(select(t).where(*in_month).order_by(t.period_start)):
+        it = items.setdefault(x.code, {"code": x.code, "name": x.name, "category": x.category, "net": 0, "qty": 0})
+        it["net"] += x.net
+        it["qty"] += x.qty
+        it["name"], it["category"] = x.name, x.category  # 이름이 바뀌었으면 나중 기간 이름으로
+    menu_items = sorted(items.values(), key=lambda x: (-x["net"], -x["qty"], x["code"]))
+    for x in menu_items:
+        x["is_credit"] = x["name"] in CREDIT_ITEMS
+
+    checks = []
+    for a, b, menu_net in periods:
+        daily_net = sum(x["net"] for x in days if a <= x["date"] <= b)
+        checks.append({"start": a, "end": b, "menu_net": int(menu_net), "daily_net": daily_net,
+                       "match": int(menu_net) == daily_net})
+
+    imp = m.PosImport
+    last = session.scalars(select(imp).order_by(imp.id.desc()).limit(5)).all()
+    return {
+        "month": month, "start": start, "end": end,
+        "days": days, "day_count": len(days), "net_total": sum(x["net"] for x in days),
+        "cash_total": sum(x["cash"] for x in days), "last_date": days[-1]["date"] if days else None,
+        "menu": menu_items, "menu_net_total": sum(x["net"] for x in menu_items),
+        "menu_periods": [{"start": a, "end": b} for a, b, _ in periods],
+        "menu_until": periods[-1][1] if periods else None,
+        "credit_item": sum(x["net"] for x in menu_items if x["is_credit"]),
+        "checks": checks,
+        "imports": [{"id": x.id, "kind": x.kind, "start": x.period_start, "end": x.period_end,
+                     "file_name": x.file_name, "rows": x.rows, "net_total": x.net_total,
+                     "imported_at": x.imported_at} for x in last],
+    }
+
+
 def profit(session: Session, month: str) -> dict:
     """월 손익 요약 (달력 기준 한 달).
 
-    - 매출: 외상 정산(정산처 식대). 홀 매출(POS)은 아직 연결 전이라 None.
+    - 매출: 홀 매출(POS 실매출) − POS에 찍은 외상(주문확인용) + 외상 정산(정산처 식대).
+      외상 거래처 주문은 POS에도 '주문확인용'으로 찍고 정산 앱에도 남아서, 그냥 더하면 두 번 센다.
+      메뉴별 자료(상품 분석)를 올린 기간만 뺄 수 있으므로, 일별 자료가 메뉴 자료보다 뒤까지 있으면
+      credit_unchecked로 알린다.
     - 비용: 직접 입력한 지출 + 발주 앱 비용 + 인건비.
       인건비는 그 달 16일에 끝나는 급여 기간(전월 17일 ~ 당월 16일)의 금액이다. 그 달에 나가는 돈이라서다.
     - 발주 앱에 결제를 남긴 건을 지출에도 넣으면 두 번 세어진다 (화면에서 안내한다).
@@ -201,10 +262,16 @@ def profit(session: Session, month: str) -> dict:
     supply = supply_orders(session, start, end)["cost"]
     labor = payroll(session, month)
     pay_start, pay_end = pay_period(month)
+    pos = pos_sales(session, month)
+    connected = pos["day_count"] > 0
 
-    revenue = {"credit": credit, "pos": None}
+    revenue = {
+        "credit": credit,
+        "pos": pos["net_total"] if connected else None,
+        "pos_credit": pos["credit_item"] if connected and pos["menu_until"] else None,  # 뺄 금액 (양수)
+    }
     costs = {**exp["by_category"], "supply_app": supply, "labor": labor["total"]}
-    revenue_total = sum(v for v in revenue.values() if v is not None)
+    revenue_total = credit + (revenue["pos"] or 0) - (revenue["pos_credit"] or 0)
     cost_total = sum(costs.values())
     return {
         "month": month, "start": start, "end": end, "pay_start": pay_start, "pay_end": pay_end,
@@ -212,7 +279,9 @@ def profit(session: Session, month: str) -> dict:
         "costs": costs, "cost_total": cost_total,
         "profit": revenue_total - cost_total,
         "expense_count": len(exp["expenses"]),
-        "pos_connected": False,
+        "pos_connected": connected,
+        "pos_days": pos["day_count"], "pos_last_date": pos["last_date"], "pos_menu_until": pos["menu_until"],
+        "credit_unchecked": connected and (pos["menu_until"] is None or pos["menu_until"] < pos["last_date"]),
     }
 
 
