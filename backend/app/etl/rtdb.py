@@ -88,12 +88,18 @@ def build_catalog(data: dict, history: dict) -> Catalog:
     old_prices = {h["source_menu_id"]: h for h in history.get("menu_prices", [])}
     for mn in to_list(data.get("menus")):
         cat.menus[mn["id"]] = {"name": mn["name"], "category": mn.get("categoryId"), "active": True}
+        # 옛 가격: data/price_history.json(사장님 기억, 추정) + 정산 앱이 남긴 history [{price, to}] (2026-11-20~)
+        # to는 그 가격의 마지막 날 다음 날이다 [from, to). 판매 중지(hidden)는 가격과 무관해서 보지 않는다
+        cuts = [(to_date(h["to"]), int(h["price"]), False) for h in to_list(mn.get("history"))]
         old = old_prices.get(mn["id"])
         if old:
-            cut = to_date(old["valid_to"])
-            cat.menu_prices[mn["id"]] = [Period(old["price"], START, cut, True), Period(mn["price"], cut)]
-        else:
-            cat.menu_prices[mn["id"]] = [Period(mn["price"], START)]
+            cuts.append((to_date(old["valid_to"]), old["price"], True))
+        periods, start = [], START
+        for cut, price, estimated in sorted(cuts):
+            if cut > start:
+                periods.append(Period(price, start, cut, estimated))
+                start = cut
+        cat.menu_prices[mn["id"]] = periods + [Period(mn["price"], start)]
         for op in to_list(mn.get("options")):
             cat.options[op["id"]] = {"menu": mn["id"], "name": op["name"], "active": True}
             cat.option_prices[op["id"]] = [Period(op["extraPrice"], START)]
